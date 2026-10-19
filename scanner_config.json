@@ -1,0 +1,7 @@
+{
+  "webhook_url": "https://n8n.dronelis.cloud/webhook/55b44c28-fd6b-4204-92c7-6abba393a049",
+  "device_id": "Netum-CS7501",
+  "selected_port": "/dev/cu.usbmodem______11",
+  "baud_rate": 9600,
+  "dark_mode": false
+}
