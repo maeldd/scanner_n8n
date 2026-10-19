@@ -1,7 +1,9 @@
 [package]
 name = "scanner_n8n"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
+description = "Application desktop pour connecter un scanner de codes-barres Bluetooth à n8n via webhook"
+license = "MIT"
 
 [dependencies]
 eframe = "0.29"

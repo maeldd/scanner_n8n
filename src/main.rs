@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use chrono::{Local, Utc};
 use eframe::egui::{self, Align, Color32, Layout, Margin, RichText, Rounding, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
@@ -192,7 +194,10 @@ impl ScannerApp {
         let mut available_ports = Vec::new();
         if let Ok(ports) = serialport::available_ports() {
             available_ports = ports.into_iter().map(|p| p.port_name).collect();
-            if config.selected_port.is_empty() && !available_ports.is_empty() {
+            if (config.selected_port.is_empty()
+                || !available_ports.contains(&config.selected_port))
+                && !available_ports.is_empty()
+            {
                 config.selected_port = available_ports[0].clone();
             }
         }
