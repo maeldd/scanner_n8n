@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.2] - 2026-10-20
+
+### Changed
+- Version bump to align the application version with the release tag and package filenames. No functional changes.
+
+---
+
 ## [1.1.0] - 2026-10-20
 
 ### Added

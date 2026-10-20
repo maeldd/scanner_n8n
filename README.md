@@ -219,7 +219,7 @@ TARGET=x86_64-pc-windows-msvc ./scripts/package-windows.sh
 
 ### Automated release
 
-Push a tag such as `v1.1.0`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
+Push a tag such as `v1.1.2`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
 
 ---
 
