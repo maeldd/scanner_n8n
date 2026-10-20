@@ -37,7 +37,8 @@ The application features a modern graphical interface with dark/light themes, a 
 - 🔌 **Auto-detection** of serial ports (COM on Windows, `/dev/cu.*` on macOS).
 - 📡 **Smart serial listening** with raw chunk reading, 50ms timeout, and 100ms idle timeout (no dependency on `\n` terminators).
 - 🌐 **Real-time webhook dispatch** to n8n with a structured JSON payload.
-- 🎨 **Modern Interface** with Dark/Light themes and an indigo color palette.
+- 🎨 **Modern Interface** with an indigo palette, automatic light/dark theme following the OS, and a manual override (Auto → Dark → Light).
+- 🌗 **Adaptive app icon**: automatically switches between its dark and light variants to match the OS appearance (macOS/Windows), including live theme changes.
 - 📊 **KPI Dashboard**: Total scans, Successes, Failures.
 - 📋 **Last scanned code** displayed in large text with 1-click copy.
 - 📜 **Activity Log** with color-coded severity levels (Info, Success, Warning, Error, Raw).
@@ -57,8 +58,10 @@ Download the appropriate binary for your OS from the [Releases](../../releases) 
 
 | OS | File | Architecture |
 |---|---|---|
-| **macOS** (Apple Silicon) | `scanner_n8n` | aarch64 |
-| **Windows** | `scanner_n8n.exe` | x86_64 |
+| **macOS** (Apple Silicon) | `Scanner-n8n-<version>-arm64.dmg` | aarch64 |
+| **Windows** | `Scanner-n8n-Setup-<version>-x64.exe` | x86_64 |
+| **macOS** (bare binary) | `scanner_n8n` | aarch64 |
+| **Windows** (bare binary) | `scanner_n8n.exe` | x86_64 |
 
 ### From Source
 
@@ -107,6 +110,12 @@ scanner_n8n.exe                    # Windows
 3. **Baud Rate**: Generally `9600` (default) or `57600`.
 4. **Device ID**: A custom identifier to recognize the scanner node in n8n.
 5. Click **"▶ Start Capture"**.
+
+Settings are saved automatically:
+- **macOS**: `~/Library/Application Support/scanner_n8n/scanner_config.json`
+- **Windows**: `%APPDATA%\scanner_n8n\scanner_config.json`
+- **Development**: `./scanner_config.json` when present
+- **Override**: set `SCANNER_N8N_CONFIG=/path/to/scanner_config.json`
 
 ---
 
@@ -169,6 +178,51 @@ RUSTC=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc \
 
 ---
 
+## Packaging
+
+### macOS — `.app` + DMG
+
+```bash
+./scripts/package-macos.sh
+# → dist/Scanner n8n.app
+# → dist/Scanner-n8n-<version>-<arch>.dmg
+# → dist/Scanner-n8n-<version>-<arch>      (bare binary)
+```
+
+- Ad-hoc signature by default. For a Developer ID signature:
+  ```bash
+  APPLE_SIGNING_IDENTITY="Developer ID Application: ..." ./scripts/package-macos.sh
+  ```
+- The `.app` uses `assets/icon-dark.icns` as its Finder icon; the running app switches between the dark/light Dock icons automatically.
+- Notarization is not automated. A downloaded non-notarized app may require right-click → Open, or `xattr -cr "/Applications/Scanner n8n.app"`.
+- The bundle identifier can be overridden with `BUNDLE_ID=...`.
+
+### Windows — installateur NSIS
+
+Prerequisites: the cross-compilation toolchain (see above) and NSIS.
+
+```bash
+brew install nsis                # macOS
+# or: sudo apt install nsis      # Linux
+./scripts/package-windows.sh
+# → dist/Scanner-n8n-<version>-x64.exe        (bare binary)
+# → dist/Scanner-n8n-Setup-<version>-x64.exe  (installer)
+```
+
+The installer installs to `Program Files`, creates Start Menu and desktop shortcuts, and registers itself in **Add or remove programs**. The application icon is embedded directly into `scanner_n8n.exe` by `build.rs` (via the `winresource` crate).
+
+On native Windows, use the MSVC target:
+
+```bash
+TARGET=x86_64-pc-windows-msvc ./scripts/package-windows.sh
+```
+
+### Automated release
+
+Push a tag such as `v1.1.0`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
+
+---
+
 ## Tech Stack
 
 | Component | Technology |
@@ -187,17 +241,38 @@ RUSTC=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc \
 ```text
 scanner_n8n/
 ├── .cargo/
-│   └── config.toml          # Linker config for Windows cross-compilation
+│   └── config.toml             # Linker config for Windows cross-compilation
+├── .github/
+│   └── workflows/
+│       └── release.yml         # CI: macOS DMG + Windows installer
+├── scripts/
+│   ├── package-macos.sh        # Builds .app and .dmg
+│   └── package-windows.sh      # Builds .exe and NSIS installer
+├── packaging/
+│   └── windows/
+│       └── installer.nsi       # NSIS installer script
 ├── src/
-│   └── main.rs               # Main source code (GUI + serial + webhook)
+│   └── main.rs                 # Main source code (GUI + serial + webhook)
 ├── docs/
-│   └── banner.jpg             # README banner image
-├── Cargo.toml                 # Rust dependencies
-├── Cargo.lock                 # Locked dependency versions
-├── scanner_config.json        # User configuration (auto-generated)
-├── CHANGELOG.md               # Version history
-├── LICENSE                    # MIT License
-└── README.md                  # This file
+│   └── banner.jpg              # README banner image
+├── assets/
+│   ├── icon-dark.svg           # Dark icon source
+│   ├── icon-light.svg          # Light icon source
+│   ├── icon-dark.png           # 1024×1024 dark variant (embedded)
+│   ├── icon-light.png          # 1024×1024 light variant (embedded)
+│   ├── icon-dark.icns          # macOS icon (dark)
+│   ├── icon-light.icns         # macOS icon (light)
+│   ├── icon-dark.ico           # Windows icon (dark)
+│   ├── icon-light.ico          # Windows icon (light)
+│   └── png/{dark,light}/       # PNG sizes 16 → 512 px
+├── dist/                       # Generated packages (git-ignored)
+├── build.rs                    # Windows icon/metadata embedding
+├── Cargo.toml                  # Rust dependencies
+├── Cargo.lock                  # Locked dependency versions
+├── scanner_config.json         # User configuration (development)
+├── CHANGELOG.md                # Version history
+├── LICENSE                     # MIT License
+└── README.md                   # This file
 ```
 
 ---

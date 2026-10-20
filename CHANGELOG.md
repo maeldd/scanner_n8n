@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-10-20
+
+### Added
+- Application icon in dark and light variants (SVG sources, PNG, `.icns` and `.ico` bundles) in `assets/`.
+- The app icon now follows the OS appearance at launch on macOS and Windows, and updates live when the system theme changes.
+- Window icon loaded from `assets/icon-dark.png` / `assets/icon-light.png`; on macOS the Dock icon is updated as well.
+- The UI theme now follows the OS appearance by default (`Auto` mode). The header button cycles `Auto → Dark → Light`, and the choice is persisted.
+- macOS packaging script producing a signed `.app` bundle and a DMG (`scripts/package-macos.sh`).
+- Windows packaging script producing an NSIS installer (`scripts/package-windows.sh`, `packaging/windows/installer.nsi`).
+- Windows executable icon and version metadata embedded via `build.rs` and `winresource`.
+- GitHub Actions release workflow building both packages on native runners.
+
+### Changed
+- Replaced the boolean `dark_mode` config key with `theme_mode` (`system`, `dark`, `light`). Existing configs without `theme_mode` default to `system`; the old `dark_mode` key is ignored.
+- When no local `scanner_config.json` exists, settings are now stored in the user config directory (`~/Library/Application Support/scanner_n8n` on macOS, `%APPDATA%\scanner_n8n` on Windows). The `SCANNER_N8N_CONFIG` environment variable can override the path.
+
+---
+
 ## [1.0.0] - 2026-10-19
 
 ### 🎉 Initial Release
@@ -80,4 +98,3 @@ First stable release of n8n Scanner — a desktop application to connect a Bluet
 - CSV export / scan history logging.
 - Audio notifications for successful/failed scans.
 - Multi-scanner mode (listen on multiple ports simultaneously).
-- App packaging: `.app` (macOS) and `.msi` (Windows).

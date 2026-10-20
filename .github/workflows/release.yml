@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS (.app + DMG)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-package
+
+      - name: Build bundle and DMG
+        run: ./scripts/package-macos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-package
+          path: |
+            dist/*.dmg
+            dist/Scanner-n8n-*-arm64
+          if-no-files-found: error
+
+  windows:
+    name: Windows (installateur)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-package
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\\Program Files (x86)\\NSIS" >> "$GITHUB_PATH"
+
+      - name: Build EXE and installer
+        run: ./scripts/package-windows.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: dist/*.exe
+          if-no-files-found: error
+
+  release:
+    name: Publier la release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

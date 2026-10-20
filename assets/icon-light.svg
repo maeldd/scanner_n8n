@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="n8n Scanner (light)">
+  <title>n8n Scanner (light)</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.5" stop-color="#E9EEFF"/>
+      <stop offset="1" stop-color="#C7D2FE"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.12" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.75"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#312E81"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FB7185"/>
+      <stop offset="1" stop-color="#E11D48"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#312E81" flood-opacity="0.18"/>
+    </filter>
+    <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#312E81" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle background -->
+  <rect x="84" y="84" width="856" height="856" rx="196" fill="url(#bg)" filter="url(#card-shadow)"/>
+  <rect x="84" y="84" width="856" height="856" rx="196" fill="url(#glow)"/>
+  <rect x="90" y="90" width="844" height="844" rx="190" fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="3"/>
+  <rect x="84" y="84" width="856" height="856" rx="196" fill="none" stroke="#A5B4FC" stroke-opacity="0.65" stroke-width="3"/>
+
+  <g filter="url(#shadow)">
+    <!-- Barcode -->
+    <g fill="url(#bar)">
+      <rect x="196" y="350" width="30" height="324" rx="15"/>
+      <rect x="256" y="350" width="62" height="324" rx="31"/>
+      <rect x="348" y="350" width="30" height="324" rx="15"/>
+      <rect x="408" y="350" width="92" height="324" rx="46"/>
+      <rect x="530" y="350" width="30" height="324" rx="15"/>
+      <rect x="590" y="350" width="58" height="324" rx="29"/>
+    </g>
+
+    <!-- Transmission arrow -->
+    <path d="M 712 392 L 814 512 L 712 632" fill="none" stroke="url(#arrow)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

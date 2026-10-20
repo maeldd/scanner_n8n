@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="n8n Scanner">
+  <title>n8n Scanner</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818CF8"/>
+      <stop offset="0.45" stop-color="#5457E5"/>
+      <stop offset="1" stop-color="#1E1B4B"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.12" r="0.9">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DDE3FF"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF9AAB"/>
+      <stop offset="1" stop-color="#F43F5E"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0B0B2B" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle background -->
+  <rect x="84" y="84" width="856" height="856" rx="196" fill="url(#bg)"/>
+  <rect x="84" y="84" width="856" height="856" rx="196" fill="url(#glow)"/>
+  <rect x="90" y="90" width="844" height="844" rx="190" fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="3"/>
+
+  <g filter="url(#shadow)">
+    <!-- Barcode -->
+    <g fill="url(#bar)">
+      <rect x="196" y="350" width="30" height="324" rx="15"/>
+      <rect x="256" y="350" width="62" height="324" rx="31"/>
+      <rect x="348" y="350" width="30" height="324" rx="15"/>
+      <rect x="408" y="350" width="92" height="324" rx="46"/>
+      <rect x="530" y="350" width="30" height="324" rx="15"/>
+      <rect x="590" y="350" width="58" height="324" rx="29"/>
+    </g>
+
+    <!-- Transmission arrow -->
+    <path d="M 712 392 L 814 512 L 712 632" fill="none" stroke="url(#arrow)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -5,6 +5,7 @@ use eframe::egui::{self, Align, Color32, Layout, Margin, RichText, Rounding, Str
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, RwLock};
@@ -14,8 +15,220 @@ use std::time::{Duration, Instant};
 const CONFIG_FILE: &str = "scanner_config.json";
 const BAUD_RATES: [u32; 5] = [9600, 19200, 38400, 57600, 115200];
 
-fn default_dark_mode() -> bool {
-    true
+/// Dossier de configuration propre à l'utilisateur (utilisé quand l'app est
+/// lancée depuis un bundle macOS ou un raccourci Windows, sans dossier courant
+/// fiable). En développement, le fichier local à côté du binaire reste prioritaire.
+fn config_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join("Library/Application Support/scanner_n8n");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            return PathBuf::from(appdata).join("scanner_n8n");
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+            return PathBuf::from(xdg).join("scanner_n8n");
+        }
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(".config/scanner_n8n");
+        }
+    }
+    PathBuf::from(".")
+}
+
+fn config_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("SCANNER_N8N_CONFIG") {
+        return PathBuf::from(path);
+    }
+
+    let local = PathBuf::from(CONFIG_FILE);
+    if local.exists() {
+        return local;
+    }
+
+    config_dir().join(CONFIG_FILE)
+}
+
+// Icônes embarquées (variantes sombre et claire)
+const ICON_DARK_PNG: &[u8] = include_bytes!("../assets/icon-dark.png");
+const ICON_LIGHT_PNG: &[u8] = include_bytes!("../assets/icon-light.png");
+
+fn icon_png(dark: bool) -> &'static [u8] {
+    if dark { ICON_DARK_PNG } else { ICON_LIGHT_PNG }
+}
+
+fn load_icon(dark: bool) -> egui::IconData {
+    eframe::icon_data::from_png_bytes(icon_png(dark))
+        .expect("Impossible de charger l'icône de l'application")
+}
+
+/// Détecte l'apparence du système avant la création de la fenêtre,
+/// afin d'afficher directement la bonne variante d'icône.
+#[cfg(target_os = "macos")]
+fn system_prefers_dark() -> bool {
+    std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .map(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .eq_ignore_ascii_case("Dark")
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn system_prefers_dark() -> bool {
+    use std::os::windows::process::CommandExt;
+
+    // Évite l'apparition fugitive d'une console au lancement (app GUI).
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let mut cmd = std::process::Command::new("reg");
+    cmd.args([
+        "query",
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        "/v",
+        "AppsUseLightTheme",
+    ]);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    cmd.output()
+        .map(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .split_whitespace()
+                .last()
+                == Some("0x0")
+        })
+        .unwrap_or(true)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn system_prefers_dark() -> bool {
+    std::env::var("GTK_THEME")
+        .map(|theme| theme.to_lowercase().contains("dark"))
+        .unwrap_or(true)
+}
+
+/// Applique l'icône de la fenêtre et, sur macOS, celle du Dock.
+fn apply_app_icon(ctx: &egui::Context, dark: bool) {
+    #[cfg(target_os = "macos")]
+    set_macos_app_icon(icon_png(dark));
+
+    let icon = load_icon(dark);
+    ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(Arc::new(icon))));
+}
+
+#[cfg(target_os = "macos")]
+fn set_macos_app_icon(png: &'static [u8]) {
+    use objc2::ClassType as _;
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::{MainThreadMarker, NSData};
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+
+    unsafe {
+        let data = NSData::with_bytes(png);
+        if let Some(image) = NSImage::initWithDataIgnoringOrientation(NSImage::alloc(), &data) {
+            NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image));
+        }
+    }
+}
+
+// ==========================================
+// Modèles de données & Configuration
+// ==========================================
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+enum ThemeMode {
+    /// Suit automatiquement l'apparence du système (par défaut).
+    #[default]
+    System,
+    Dark,
+    Light,
+}
+
+impl ThemeMode {
+    fn next(self) -> Self {
+        match self {
+            Self::System => Self::Dark,
+            Self::Dark => Self::Light,
+            Self::Light => Self::System,
+        }
+    }
+
+    fn icon_and_label(self) -> (&'static str, &'static str) {
+        match self {
+            Self::System => ("🌗", "Auto"),
+            Self::Dark => ("🌙", "Sombre"),
+            Self::Light => ("☀️", "Clair"),
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::System => {
+                "Thème automatique : suit le mode clair/sombre du système. Cliquer pour forcer le mode sombre."
+            }
+            Self::Dark => "Mode sombre forcé. Cliquer pour forcer le mode clair.",
+            Self::Light => {
+                "Mode clair forcé. Cliquer pour revenir au suivi automatique du système."
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct AppConfig {
+    webhook_url: String,
+    device_id: String,
+    selected_port: String,
+    baud_rate: u32,
+    #[serde(default)]
+    theme_mode: ThemeMode,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            webhook_url: String::new(),
+            device_id: "Netum-CS7501".to_string(),
+            selected_port: String::new(),
+            baud_rate: 9600,
+            theme_mode: ThemeMode::System,
+        }
+    }
+}
+
+impl AppConfig {
+    fn load() -> Self {
+        if let Ok(data) = fs::read_to_string(config_path()) {
+            if let Ok(cfg) = serde_json::from_str(&data) {
+                return cfg;
+            }
+        }
+        Self::default()
+    }
+
+    fn save(&self) {
+        if let Ok(data) = serde_json::to_string_pretty(self) {
+            let path = config_path();
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(path, data);
+        }
+    }
 }
 
 // ==========================================
@@ -61,49 +274,6 @@ impl ThemeColors {
                 border_console: Color32::from_rgb(203, 213, 225),
                 accent: Color32::from_rgb(79, 70, 229),
             }
-        }
-    }
-}
-
-// ==========================================
-// Modèles de données & Configuration
-// ==========================================
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct AppConfig {
-    webhook_url: String,
-    device_id: String,
-    selected_port: String,
-    baud_rate: u32,
-    #[serde(default = "default_dark_mode")]
-    dark_mode: bool,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            webhook_url: String::new(),
-            device_id: "Netum-CS7501".to_string(),
-            selected_port: String::new(),
-            baud_rate: 9600,
-            dark_mode: true,
-        }
-    }
-}
-
-impl AppConfig {
-    fn load() -> Self {
-        if let Ok(data) = fs::read_to_string(CONFIG_FILE) {
-            if let Ok(cfg) = serde_json::from_str(&data) {
-                return cfg;
-            }
-        }
-        Self::default()
-    }
-
-    fn save(&self) {
-        if let Ok(data) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(CONFIG_FILE, data);
         }
     }
 }
@@ -179,14 +349,18 @@ struct ScannerApp {
     copied_time: Option<Instant>,
     webhook_url_shared: Arc<RwLock<String>>,
     device_id_shared: Arc<RwLock<String>>,
+    icon_dark: Option<bool>,
 }
 
 impl ScannerApp {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, system_dark: bool) -> Self {
         let mut config = AppConfig::load();
 
-        // Appliquer immédiatement le thème choisi (bloque l'écrasement par le thème système)
-        Self::apply_theme(&cc.egui_ctx, config.dark_mode);
+        // Appliquer immédiatement le thème (Auto par défaut : suit le système)
+        Self::apply_theme(&cc.egui_ctx, config.theme_mode);
+
+        // Icône initiale : variante correspondant à l'apparence du système
+        apply_app_icon(&cc.egui_ctx, system_dark);
 
         let (event_tx, event_rx) = channel();
 
@@ -219,6 +393,7 @@ impl ScannerApp {
             copied_time: None,
             webhook_url_shared,
             device_id_shared,
+            icon_dark: Some(system_dark),
         };
 
         app.add_log(
@@ -230,65 +405,67 @@ impl ScannerApp {
         app
     }
 
-    fn apply_theme(ctx: &egui::Context, dark_mode: bool) {
-        if dark_mode {
-            ctx.set_theme(egui::ThemePreference::Dark);
-            let mut visuals = egui::Visuals::dark();
+    fn apply_theme(ctx: &egui::Context, mode: ThemeMode) {
+        ctx.set_theme(match mode {
+            ThemeMode::System => egui::ThemePreference::System,
+            ThemeMode::Dark => egui::ThemePreference::Dark,
+            ThemeMode::Light => egui::ThemePreference::Light,
+        });
 
-            visuals.panel_fill = Color32::from_rgb(14, 16, 24);
-            visuals.window_fill = Color32::from_rgb(20, 23, 34);
-            visuals.extreme_bg_color = Color32::from_rgb(10, 11, 17);
-            visuals.faint_bg_color = Color32::from_rgb(26, 30, 44);
-            visuals.override_text_color = Some(Color32::from_rgb(241, 245, 249));
+        // Les deux palettes sont configurées : en mode System, egui bascule
+        // automatiquement de l'une à l'autre quand le système change.
+        let mut dark = egui::Visuals::dark();
 
-            visuals.widgets.noninteractive.rounding = Rounding::same(8.0);
-            visuals.widgets.inactive.rounding = Rounding::same(8.0);
-            visuals.widgets.hovered.rounding = Rounding::same(8.0);
-            visuals.widgets.active.rounding = Rounding::same(8.0);
+        dark.panel_fill = Color32::from_rgb(14, 16, 24);
+        dark.window_fill = Color32::from_rgb(20, 23, 34);
+        dark.extreme_bg_color = Color32::from_rgb(10, 11, 17);
+        dark.faint_bg_color = Color32::from_rgb(26, 30, 44);
+        dark.override_text_color = Some(Color32::from_rgb(241, 245, 249));
 
-            visuals.widgets.inactive.bg_fill = Color32::from_rgb(28, 32, 48);
-            visuals.widgets.inactive.bg_stroke =
-                Stroke::new(1.0_f32, Color32::from_rgb(44, 50, 74));
+        dark.widgets.noninteractive.rounding = Rounding::same(8.0);
+        dark.widgets.inactive.rounding = Rounding::same(8.0);
+        dark.widgets.hovered.rounding = Rounding::same(8.0);
+        dark.widgets.active.rounding = Rounding::same(8.0);
 
-            visuals.widgets.hovered.bg_fill = Color32::from_rgb(38, 44, 66);
-            visuals.widgets.hovered.bg_stroke =
-                Stroke::new(1.0_f32, Color32::from_rgb(99, 102, 241));
+        dark.widgets.inactive.bg_fill = Color32::from_rgb(28, 32, 48);
+        dark.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(44, 50, 74));
 
-            visuals.widgets.active.bg_fill = Color32::from_rgb(79, 70, 229);
+        dark.widgets.hovered.bg_fill = Color32::from_rgb(38, 44, 66);
+        dark.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(99, 102, 241));
 
-            ctx.set_visuals(visuals);
-        } else {
-            ctx.set_theme(egui::ThemePreference::Light);
-            let mut visuals = egui::Visuals::light();
+        dark.widgets.active.bg_fill = Color32::from_rgb(79, 70, 229);
 
-            visuals.panel_fill = Color32::from_rgb(241, 245, 249);
-            visuals.window_fill = Color32::from_rgb(255, 255, 255);
-            visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
-            visuals.faint_bg_color = Color32::from_rgb(241, 245, 249);
-            visuals.override_text_color = Some(Color32::from_rgb(15, 23, 42));
+        ctx.set_visuals_of(egui::Theme::Dark, dark);
 
-            visuals.widgets.noninteractive.rounding = Rounding::same(8.0);
-            visuals.widgets.inactive.rounding = Rounding::same(8.0);
-            visuals.widgets.hovered.rounding = Rounding::same(8.0);
-            visuals.widgets.active.rounding = Rounding::same(8.0);
+        let mut light = egui::Visuals::light();
 
-            visuals.widgets.inactive.bg_fill = Color32::from_rgb(255, 255, 255);
-            visuals.widgets.inactive.bg_stroke =
-                Stroke::new(1.0_f32, Color32::from_rgb(203, 213, 225));
+        light.panel_fill = Color32::from_rgb(241, 245, 249);
+        light.window_fill = Color32::from_rgb(255, 255, 255);
+        light.extreme_bg_color = Color32::from_rgb(255, 255, 255);
+        light.faint_bg_color = Color32::from_rgb(241, 245, 249);
+        light.override_text_color = Some(Color32::from_rgb(15, 23, 42));
 
-            visuals.widgets.hovered.bg_fill = Color32::from_rgb(241, 245, 249);
-            visuals.widgets.hovered.bg_stroke =
-                Stroke::new(1.0_f32, Color32::from_rgb(99, 102, 241));
+        light.widgets.noninteractive.rounding = Rounding::same(8.0);
+        light.widgets.inactive.rounding = Rounding::same(8.0);
+        light.widgets.hovered.rounding = Rounding::same(8.0);
+        light.widgets.active.rounding = Rounding::same(8.0);
 
-            visuals.widgets.active.bg_fill = Color32::from_rgb(79, 70, 229);
+        light.widgets.inactive.bg_fill = Color32::from_rgb(255, 255, 255);
+        light.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(203, 213, 225));
 
-            ctx.set_visuals(visuals);
+        light.widgets.hovered.bg_fill = Color32::from_rgb(241, 245, 249);
+        light.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(99, 102, 241));
+
+        light.widgets.active.bg_fill = Color32::from_rgb(79, 70, 229);
+
+        ctx.set_visuals_of(egui::Theme::Light, light);
+
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            ctx.style_mut_of(theme, |style| {
+                style.spacing.item_spacing = Vec2::new(8.0, 8.0);
+                style.spacing.button_padding = Vec2::new(12.0, 7.0);
+            });
         }
-
-        let mut style = (*ctx.style()).clone();
-        style.spacing.item_spacing = Vec2::new(8.0, 8.0);
-        style.spacing.button_padding = Vec2::new(12.0, 7.0);
-        ctx.set_style(style);
     }
 
     fn add_log(&mut self, level: LogLevel, tag: &str, text: &str) {
@@ -644,8 +821,18 @@ fn process_scanned_code(
 
 impl eframe::App for ScannerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Maintenir le thème cohérent et synchronisé
-        let theme = ThemeColors::new(self.config.dark_mode);
+        // Suivre l'apparence du système : variante sombre ou claire de l'icône
+        if let Some(theme) = ctx.system_theme() {
+            let icon_dark = theme == egui::Theme::Dark;
+            if self.icon_dark != Some(icon_dark) {
+                apply_app_icon(ctx, icon_dark);
+                self.icon_dark = Some(icon_dark);
+            }
+        }
+
+        // Maintenir le thème cohérent et synchronisé (résolu : System → dark/light)
+        let is_dark = ctx.theme() == egui::Theme::Dark;
+        let theme = ThemeColors::new(is_dark);
 
         // Dépouillement des événements en arrière-plan
         while let Ok(event) = self.event_rx.try_recv() {
@@ -754,12 +941,9 @@ impl eframe::App for ScannerApp {
                                 );
                             });
 
-                        // Bouton Bascule Thème Sombre / Clair
-                        let (theme_icon, theme_label) = if self.config.dark_mode {
-                            ("🌙", "Sombre")
-                        } else {
-                            ("☀️", "Clair")
-                        };
+                        // Bouton Thème : Auto (système) → Sombre → Clair
+                        let (theme_icon, theme_label) =
+                            self.config.theme_mode.icon_and_label();
 
                         if ui
                             .button(
@@ -767,12 +951,12 @@ impl eframe::App for ScannerApp {
                                     .size(12.0)
                                     .color(theme.text_primary),
                             )
-                            .on_hover_text("Changer de thème (Sombre / Clair)")
+                            .on_hover_text(self.config.theme_mode.hover_text())
                             .clicked()
                         {
-                            self.config.dark_mode = !self.config.dark_mode;
+                            self.config.theme_mode = self.config.theme_mode.next();
                             self.config.save();
-                            Self::apply_theme(ctx, self.config.dark_mode);
+                            Self::apply_theme(ctx, self.config.theme_mode);
                         }
                     });
                 });
@@ -1362,18 +1546,23 @@ impl eframe::App for ScannerApp {
 // ==========================================
 
 fn main() -> eframe::Result<()> {
+    // Choisir la variante d'icône correspondant à l'apparence du système
+    let system_dark = system_prefers_dark();
+    let icon = load_icon(system_dark);
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([740.0, 720.0])
             .with_min_inner_size([620.0, 580.0])
             .with_resizable(true)
-            .with_title("Netum CS7501 ➔ n8n Bridge"),
+            .with_title("Netum CS7501 ➔ n8n Bridge")
+            .with_icon(icon),
         ..Default::default()
     };
 
     eframe::run_native(
         "Netum CS7501 -> n8n Bridge",
         options,
-        Box::new(|cc| Ok(Box::new(ScannerApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(ScannerApp::new(cc, system_dark)))),
     )
 }
