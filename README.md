@@ -320,5 +320,5 @@ This project is licensed under the [MIT](LICENSE) License.
 ---
 
 <p align="center">
-  Built with ❤️ in Rust by <a href="https://github.com/<your-username>">@your-username</a>
+  Built with ❤️ in Rust by <a href="https://github.com/maeldd">@maeldd</a>
 </p>
