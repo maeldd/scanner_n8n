@@ -4,6 +4,32 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Git Bash (notamment sur GitHub Actions) place /usr/bin avant les outils MSVC.
+# Or /usr/bin/link.exe est l'utilitaire GNU "link", pas le linker Microsoft :
+# il provoque des erreurs "extra operand" pendant la compilation Rust.
+if [[ -n "${VCToolsInstallDir:-}" ]] && command -v cygpath >/dev/null 2>&1; then
+    VCTOOLS_POSIX="$(cygpath -u "$VCToolsInstallDir")"
+    MSVC_BIN="${VCTOOLS_POSIX%/}/bin/Hostx64/x64"
+    if [[ -x "$MSVC_BIN/link.exe" ]]; then
+        export PATH="$MSVC_BIN:$PATH"
+        echo "==> Linker MSVC : $MSVC_BIN/link.exe"
+    else
+        echo "AVERTISSEMENT : link.exe MSVC introuvable dans $MSVC_BIN" >&2
+    fi
+fi
+
+if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+    LINK_PATH="$(command -v link.exe || true)"
+    echo "==> link.exe sélectionné : ${LINK_PATH:-introuvable}"
+    case "$LINK_PATH" in
+        */usr/bin/link|*/usr/bin/link.exe)
+            echo "ERREUR : le link.exe de Git Bash masque celui de MSVC." >&2
+            echo "Vérifie que VCToolsInstallDir est défini et que MSVC est dans le PATH." >&2
+            exit 1
+            ;;
+    esac
+fi
+
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
 TARGET="${TARGET:-x86_64-pc-windows-gnu}"
 EXE_REL="target/$TARGET/release/scanner_n8n.exe"
