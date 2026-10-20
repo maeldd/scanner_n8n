@@ -52,7 +52,9 @@ fi
 # NSIS attend un chemin natif sous Windows (Git Bash/MSYS).
 if command -v cygpath >/dev/null 2>&1; then
     ROOT_NATIVE="$(cygpath -m "$ROOT")"
-    EXE_PATH="$(cygpath -m "$ROOT/$EXE_REL")"
+    # NSIS n'ouvre pas toujours un chemin absolu avec des slashes (D:/...).
+    # On lui donne le chemin Windows natif pour la commande File.
+    EXE_PATH="$(cygpath -w "$ROOT/$EXE_REL")"
 else
     ROOT_NATIVE="$ROOT"
     EXE_PATH="$ROOT/$EXE_REL"
