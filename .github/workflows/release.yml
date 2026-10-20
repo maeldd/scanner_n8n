@@ -61,7 +61,21 @@ jobs:
           echo "C:\\Program Files (x86)\\NSIS" >> "$GITHUB_PATH"
 
       - name: Build EXE and installer
-        run: ./scripts/package-windows.sh
+        shell: bash
+        run: |
+          # Git for Windows fournit /usr/bin/link.exe, un utilitaire GNU qui
+          # masque le linker MSVC. C'est le contournement recommandé par
+          # ilammy/msvc-dev-cmd pour les steps en shell bash.
+          rm -f /usr/bin/link.exe
+          ./scripts/package-windows.sh
+
+      - name: Diagnostics en cas d'échec
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error title=link.exe::$(command -v link.exe || echo introuvable)"
+          echo "::error title=makensis::$(command -v makensis || echo introuvable)"
+          echo "::error title=VCToolsInstallDir::${VCToolsInstallDir:-absent}"
 
       - uses: actions/upload-artifact@v4
         with:

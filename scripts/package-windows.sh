@@ -10,7 +10,7 @@ cd "$ROOT"
 if [[ -n "${VCToolsInstallDir:-}" ]] && command -v cygpath >/dev/null 2>&1; then
     VCTOOLS_POSIX="$(cygpath -u "$VCToolsInstallDir")"
     MSVC_BIN="${VCTOOLS_POSIX%/}/bin/Hostx64/x64"
-    if [[ -x "$MSVC_BIN/link.exe" ]]; then
+    if [[ -f "$MSVC_BIN/link.exe" ]]; then
         export PATH="$MSVC_BIN:$PATH"
         echo "==> Linker MSVC : $MSVC_BIN/link.exe"
     else
@@ -20,8 +20,9 @@ fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
     LINK_PATH="$(command -v link.exe || true)"
+    LINK_NORM="$(printf '%s' "$LINK_PATH" | tr '\\' '/')"
     echo "==> link.exe sélectionné : ${LINK_PATH:-introuvable}"
-    case "$LINK_PATH" in
+    case "$LINK_NORM" in
         */usr/bin/link|*/usr/bin/link.exe)
             echo "ERREUR : le link.exe de Git Bash masque celui de MSVC." >&2
             echo "Vérifie que VCToolsInstallDir est défini et que MSVC est dans le PATH." >&2
