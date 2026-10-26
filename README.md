@@ -24,6 +24,8 @@
 
 ---
 
+> 🇫🇷 **Guide pas à pas (opérateur + n8n/Notion)** : [docs/GUIDE-UTILISATION.md](docs/GUIDE-UTILISATION.md)
+
 ## About
 
 **n8n Scanner** is a lightweight desktop application written in Rust that turns a Bluetooth scanner (like the Netum CS7501) connected via **SPP (Serial Port Profile)** into a stock-movement station. It captures `IN|REF` / `OUT|REF` QR codes, counts quantities locally, and forwards one durable event per movement to an **n8n** workflow via HTTP webhook.

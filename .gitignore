@@ -9,3 +9,4 @@ labels.html
 labels.pdf
 .venv
 scanner_config.json.tmp
+.DS_Store
