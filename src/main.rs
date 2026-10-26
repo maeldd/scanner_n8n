@@ -552,16 +552,15 @@ impl ScannerApp {
         let catalog_file = catalog_path();
         let (catalog, catalog_level, catalog_message) = match Catalog::load(&catalog_file) {
             Ok(catalog) => {
-                let low_stock = catalog.low_stock_count();
-                let mut message = format!(
-                    "{} référence(s) chargée(s) depuis {}.",
-                    catalog.len(),
-                    catalog_file.display()
-                );
-                if low_stock > 0 {
-                    message.push_str(&format!(" {low_stock} en alerte stock."));
-                }
-                (catalog, LogLevel::Info, message)
+                let count = catalog.len();
+                (
+                    catalog,
+                    LogLevel::Info,
+                    format!(
+                        "{count} référence(s) chargée(s) depuis {}.",
+                        catalog_file.display()
+                    ),
+                )
             }
             Err(error) => (
                 Catalog::empty(),
@@ -1141,16 +1140,6 @@ impl ScannerApp {
         match update.status {
             EventStatus::Sent => {
                 self.stats.sent_success += 1;
-                if let Some(stock) = update.stock_after {
-                    self.catalog.update_stock(&update.sku, stock);
-                } else if let Some(action) = action {
-                    let delta = if action == Action::In {
-                        update.qty as i64
-                    } else {
-                        -(update.qty as i64)
-                    };
-                    self.catalog.adjust_stock(&update.sku, delta);
-                }
 
                 let is_cancel = update.motif.as_deref() == Some("Annulation");
                 if let Some(last) = &mut self.last_commit {
@@ -1170,7 +1159,7 @@ impl ScannerApp {
 
                 let stock_text = update
                     .stock_after
-                    .map(|stock| format!(" · stock {stock}"))
+                    .map(|stock| format!(" · stock Notion {stock}"))
                     .unwrap_or_default();
                 let message = update.message.clone().unwrap_or_else(|| {
                     if is_cancel {
@@ -1840,20 +1829,14 @@ impl eframe::App for ScannerApp {
         let pending = self.movement.pending().cloned();
         let last = self.last_commit.clone();
         let auto_commit = self.auto_commit;
-        let (pending_name, pending_description, pending_stock, pending_low) =
-            if let Some(pending) = &pending {
-                match self.catalog.lookup(&pending.sku) {
-                    Some(reference) => (
-                        reference.name.clone(),
-                        reference.description.clone(),
-                        reference.stock,
-                        reference.low_stock,
-                    ),
-                    None => (String::new(), String::new(), 0, false),
-                }
-            } else {
-                (String::new(), String::new(), 0, false)
-            };
+        let (pending_name, pending_description) = if let Some(pending) = &pending {
+            match self.catalog.lookup(&pending.sku) {
+                Some(reference) => (reference.name.clone(), reference.description.clone()),
+                None => (String::new(), String::new()),
+            }
+        } else {
+            (String::new(), String::new())
+        };
 
         let hero_border = if let Some(pending) = &pending {
             action_color(pending.action)
@@ -2020,13 +2003,6 @@ impl eframe::App for ScannerApp {
                                         .strong()
                                         .color(theme.text_primary),
                                 );
-                                if pending_low {
-                                    ui.label(
-                                        RichText::new("⚠ alerte stock")
-                                            .size(10.0)
-                                            .color(Color32::from_rgb(251, 191, 36)),
-                                    );
-                                }
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     ui.label(
                                         RichText::new(format!(
@@ -2099,27 +2075,6 @@ impl eframe::App for ScannerApp {
                                 ui.add_space(12.0);
 
                                 ui.vertical(|ui| {
-                                    let stock_after = if pending.action == Action::In {
-                                        pending_stock + pending.qty as i64
-                                    } else {
-                                        pending_stock - pending.qty as i64
-                                    };
-                                    let stock_color = if pending.action == Action::Out
-                                        && stock_after < 0
-                                    {
-                                        Color32::from_rgb(239, 68, 68)
-                                    } else {
-                                        theme.text_muted
-                                    };
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "Stock local : {} → {}",
-                                            pending_stock, stock_after
-                                        ))
-                                        .size(11.0)
-                                        .color(stock_color),
-                                    );
-
                                     if pending.needs_review {
                                         ui.label(
                                             RichText::new(
@@ -2233,7 +2188,7 @@ impl eframe::App for ScannerApp {
                                 );
                                 if let Some(stock) = last.stock_after {
                                     ui.label(
-                                        RichText::new(format!("Stock après : {stock}"))
+                                        RichText::new(format!("Stock Notion : {stock}"))
                                             .size(11.0)
                                             .color(theme.text_muted),
                                     );
@@ -2886,7 +2841,7 @@ mod tests {
             station_id: "POSTE-01",
             scanned_at: "2026-10-26T10:00:00+00:00",
             raw: "OUT|DCO001",
-            app_version: "1.2.1",
+            app_version: "1.2.2",
             motif: Some("Annulation"),
             cancels_event_id: Some("previous-event"),
             is_test: None,

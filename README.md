@@ -43,7 +43,7 @@ The application features a modern graphical interface with dark/light themes, a 
 - ⏱️ **Auto-validation** after 5 seconds of inactivity, with a visible countdown.
 - ↩️ **10-second undo** for the last movement.
 - 💾 **Persistent outbox**: every movement is written to `outbox.json` before HTTP, then replayed sequentially with retries and a stable `event_id` for idempotency.
-- 📚 **Local reference catalog** loaded from `references.csv` (name, stock, low-stock alert) for instant display; Notion remains authoritative.
+- 📚 **Local reference catalog** loaded from `references.csv` (names and descriptions only) for instant display; stock and alerts remain exclusively in Notion.
 - 📊 **KPI Dashboard**: movements, validated, pending, rejected.
 - 📜 **Activity Log** with color-coded severity levels (Info, Success, Warning, Error, Raw).
 - 🔄 **Real-time URL sync**: Edit the webhook URL without stopping the capture process.
@@ -155,19 +155,19 @@ The QR contains **no quantity**. Quantity is counted by the app:
 
 A **10-second undo** button is available after validation. If the movement is still queued locally, it is removed without HTTP; if it was already sent, a compensating movement is enqueued with `motif: "Annulation"` and `cancels_event_id`.
 
-### 5. Local catalog
+### 5. Local catalog (names only)
 
-`references.csv` gives the app the reference name, known stock, and low-stock flag. It is generated from the Notion CSV export:
+`references.csv` gives the app the reference name and description. It is generated from the Notion CSV export:
 
 ```bash
 python3 scripts/import-notion-csv.py "Suivi de stock - pièces.csv" -o references.csv
 ```
 
-Place `references.csv` next to the configuration file (or in the current directory during development), or set `SCANNER_N8N_CATALOG=/path/to/references.csv`. The file is **not committed** because it contains stock levels.
+Place `references.csv` next to the configuration file (or in the current directory during development), or set `SCANNER_N8N_CATALOG=/path/to/references.csv`.
 
-> The importer uses Notion's **`Stock réel`** column for the known stock and the presence of **`Alerts stock`** for the low-stock flag. If your Notion setup uses **`Stock en cours`** as the on-hand value, change the `stock` mapping in `scripts/import-notion-csv.py` (one line) and regenerate `references.csv`.
+The app does **not** keep a local stock cache and does **not** compute low-stock alerts. Stock and alerts are managed only in Notion; the optional `stock_after` returned by n8n is displayed as the server-side “Stock Notion” value after a movement. Existing CSV files that still contain `stock`, `stock_en_cours`, or `low_stock` columns remain compatible: those columns are ignored.
 
-The catalog is only a cache for display. Notion (through n8n) remains the source of truth; the app updates the cached stock from the `stock_after` field in the webhook response.
+The catalog is optional: without `references.csv`, scanning and sending still work; the app simply displays the raw reference instead of a friendly name.
 
 ### 6. Labels
 
@@ -210,7 +210,7 @@ should use the movement fields.
   "station_id": "POSTE-01",
   "scanned_at": "2026-10-26T10:00:00+00:00",
   "raw": "OUT|DCO001",
-  "app_version": "1.2.1",
+  "app_version": "1.2.2",
   "barcode": "OUT|DCO001",
   "timestamp": "2026-10-26T10:00:00+00:00",
   "device_id": "POSTE-01",
@@ -254,8 +254,8 @@ The app then reopens the pending movement with the rejected quantity so the
 operator can adjust it without rescanning. Auto-validation and new scans are
 paused until the quantity is adjusted (or the movement is cancelled), to avoid
 replaying the same rejected movement. Any 2xx response without a JSON body is
-treated as success (backward compatibility with the previous workflow); the
-local cache is then adjusted by `qty`.
+treated as success (backward compatibility with the previous workflow); the app
+does not keep a local stock cache.
 
 ### n8n implementation notes
 
@@ -346,7 +346,7 @@ TARGET=x86_64-pc-windows-msvc ./scripts/package-windows.sh
 
 ### Automated release
 
-Push a tag such as `v1.2.1`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
+Push a tag such as `v1.2.2`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
 
 ---
 

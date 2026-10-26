@@ -101,11 +101,11 @@ Cliquer sur **Tester le Webhook** :
 > ne fonctionne que lorsque le bouton **Listen for test event** est actif dans
 > l'éditeur n8n.
 
-### Catalogue local (noms et stock)
+### Catalogue local (noms)
 
-L'application affiche instantanément le nom et le stock local à partir de
-`references.csv`. Ce fichier est un **cache** : Notion reste la source de
-vérité.
+L'application affiche instantanément le nom et la description à partir de
+`references.csv`. Ce fichier est un **catalogue de noms** : il ne contient plus
+de stock ni d'alerte. Le stock et les alertes sont gérés uniquement dans Notion.
 
 Emplacement attendu par l'application packagée :
 
@@ -119,10 +119,13 @@ mkdir -p "$HOME/Library/Application Support/scanner_n8n"
 cp references.csv "$HOME/Library/Application Support/scanner_n8n/"
 ```
 
-Le stock affiché au démarrage vient de ce fichier. Pour le rafraîchir,
-réexporter les références depuis Notion et remplacer `references.csv`, puis
-relancer l'application. Après chaque mouvement, le stock affiché est mis à jour
-avec la réponse `stock_after` de n8n.
+Le catalogue sert uniquement à l'affichage du nom et de la description. Il n'y
+a **aucun stock local** ni alerte locale : le stock et les alertes restent dans
+Notion. La réponse `stock_after` de n8n, si elle est fournie, est affichée comme
+« Stock Notion » après le mouvement.
+
+Le catalogue est **optionnel** : sans `references.csv`, le scan et l'envoi
+fonctionnent toujours ; l'application affiche simplement la référence brute.
 
 ---
 
@@ -149,8 +152,9 @@ avec la réponse `stock_after` de n8n.
      précédent ;
    - sans action, le mouvement est validé automatiquement après **5 secondes**.
 
-La carte du mouvement affiche le stock local projeté. Le stock serveur reste
-la référence.
+La carte du mouvement affiche le nom et la description. Aucun stock local n'est
+calculé : le stock et les alertes restent dans Notion. Si n8n renvoie
+`stock_after`, la carte du dernier mouvement l'affiche comme « Stock Notion ».
 
 ### Annuler le dernier mouvement
 
@@ -636,7 +640,7 @@ Attendu :
 | « REFUSÉS » augmente | Consulter le journal, corriger la cause, puis **Acquitter les refusés**. |
 | « EN ATTENTE » augmente | n8n est injoignable ou lent. Les mouvements sont dans `outbox.json` ; ne pas supprimer ce fichier. |
 | Le QR ne scanne pas | Vérifier le QR généré par le logiciel de l'imprimante 3D : contenu `IN` / `OUT` + référence, taille, contraste, zone blanche autour. Tester avec un téléphone. |
-| Le stock affiché est faux au démarrage | Le stock local vient de `references.csv`. Réexporter le catalogue depuis Notion et relancer l'application. |
+| Le stock ne s'affiche pas dans l'application | Normal : le stock et les alertes sont gérés uniquement dans Notion. L'application n'affiche que le nom, la description et éventuellement le `stock_after` renvoyé par n8n. |
 
 ---
 
@@ -652,7 +656,7 @@ Contenu :
 | Fichier | Rôle |
 |---|---|
 | `scanner_config.json` | URL, port série, poste, clé API |
-| `references.csv` | Cache local des références et du stock |
+| `references.csv` | Catalogue local des noms et descriptions (sans stock) |
 | `outbox.json` | Mouvements en attente / envoyés / refusés |
 
 Sauvegarder ce dossier régulièrement. Ne pas éditer `outbox.json` à la main.

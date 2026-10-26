@@ -6,7 +6,9 @@ Usage :
     python3 scripts/import-notion-csv.py "export-notion.csv" -o references.csv
 
 Le fichier produit est volontairement simple (une ligne par référence) et
-n'est pas destiné à être commité : il contient les niveaux de stock.
+n'est pas destiné à être commité : c'est un fichier de données local. Il ne
+contient volontairement ni stock ni alerte : ces informations restent dans
+Notion.
 """
 
 from __future__ import annotations
@@ -21,9 +23,6 @@ OUTPUT_COLUMNS = [
     "name",
     "category",
     "kind",
-    "stock",
-    "stock_en_cours",
-    "low_stock",
     "description",
     "qty_per_drone",
     "qty_per_rampe",
@@ -78,12 +77,6 @@ def main() -> int:
                 "name": (row.get("Nom") or "").strip(),
                 "category": (row.get("Catégorie") or "").strip(),
                 "kind": (row.get("Type") or "").strip(),
-                # « Stock réel » est le stock physique utilisé par l'application.
-                # Si Notion doit utiliser « Stock en cours », il suffit de changer
-                # la colonne ci-dessous.
-                "stock": as_int(row.get("Stock réel")),
-                "stock_en_cours": as_int(row.get("Stock en cours")),
-                "low_stock": "true" if (row.get("Alerts stock") or "").strip() else "false",
                 "description": (row.get("Description") or "").strip(),
                 "qty_per_drone": as_int(row.get("Quantité par drone")),
                 "qty_per_rampe": as_int(row.get("Quantité par rampe")),

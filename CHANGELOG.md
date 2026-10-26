@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2026-10-26
+
+### Changed
+- Disabled the local stock cache and low-stock alerts. `references.csv` is now used only for reference names and descriptions; stock and alerts remain exclusively in Notion. The optional `stock_after` returned by n8n is still displayed as “Stock Notion” after a movement.
+- The catalog importer no longer writes `stock`, `stock_en_cours`, or `low_stock` columns. Existing CSV files with these columns remain compatible because the extra columns are ignored.
+
+---
+
 ## [1.2.1] - 2026-10-26
 
 ### Changed
