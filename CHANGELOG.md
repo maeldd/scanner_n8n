@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.2.1] - 2026-10-26
 
 ### Changed
 - Removed the bundled QR label generator. Labels are produced externally (for example with the 3D printer's label software); the app contract remains `IN|REF` / `OUT|REF` with no quantity in the QR.
+
+### Documentation
+- Added `docs/GUIDE-UTILISATION.md`, a French step-by-step guide for operators and for the n8n/Notion setup.
+- The guide is attached to the GitHub release.
 
 ---
 

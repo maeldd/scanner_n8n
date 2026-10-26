@@ -210,7 +210,7 @@ should use the movement fields.
   "station_id": "POSTE-01",
   "scanned_at": "2026-10-26T10:00:00+00:00",
   "raw": "OUT|DCO001",
-  "app_version": "1.2.0",
+  "app_version": "1.2.1",
   "barcode": "OUT|DCO001",
   "timestamp": "2026-10-26T10:00:00+00:00",
   "device_id": "POSTE-01",
@@ -346,7 +346,7 @@ TARGET=x86_64-pc-windows-msvc ./scripts/package-windows.sh
 
 ### Automated release
 
-Push a tag such as `v1.2.0`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
+Push a tag such as `v1.2.1`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
 
 ---
 

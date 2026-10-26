@@ -42,14 +42,16 @@ l'application réessaie automatiquement au redémarrage.
 
 ### macOS
 
-1. Télécharger `Scanner-n8n-1.2.0-arm64.dmg` depuis la page Releases.
+1. Télécharger le DMG macOS depuis la page Releases
+   (`Scanner-n8n-<version>-arm64.dmg`).
 2. Ouvrir le DMG et glisser l'application dans **Applications**.
 3. Au premier lancement, si macOS bloque l'application : clic droit sur
    l'application → **Ouvrir**.
 
 ### Windows
 
-1. Télécharger `Scanner-n8n-Setup-1.2.0-x64.exe`.
+1. Télécharger l'installateur Windows depuis la page Releases
+   (`Scanner-n8n-Setup-<version>-x64.exe`).
 2. Lancer l'installateur et suivre les étapes.
 3. Au premier lancement, si Windows SmartScreen apparaît : **Informations
    complémentaires** → **Exécuter quand même**.
