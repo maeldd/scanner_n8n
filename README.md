@@ -26,25 +26,28 @@
 
 ## About
 
-**n8n Scanner** is a lightweight desktop application written in Rust that captures barcodes from a Bluetooth scanner (like the Netum CS7501) connected via **SPP (Serial Port Profile)** and automatically forwards them to an **n8n** workflow via HTTP webhook.
+**n8n Scanner** is a lightweight desktop application written in Rust that turns a Bluetooth scanner (like the Netum CS7501) connected via **SPP (Serial Port Profile)** into a stock-movement station. It captures `IN|REF` / `OUT|REF` QR codes, counts quantities locally, and forwards one durable event per movement to an **n8n** workflow via HTTP webhook.
 
-The application features a modern graphical interface with dark/light themes, a real-time activity log, and scanning statistics.
+The application features a modern graphical interface with dark/light themes, a persistent outbox, a local reference catalog, and a real-time activity log.
 
 ---
 
 ## Features
 
 - 🔌 **Auto-detection** of serial ports (COM on Windows, `/dev/cu.*` on macOS).
-- 📡 **Smart serial listening** with raw chunk reading, 50ms timeout, and 100ms idle timeout (no dependency on `\n` terminators).
-- 🌐 **Real-time webhook dispatch** to n8n with a structured JSON payload.
-- 🎨 **Modern Interface** with an indigo palette, automatic light/dark theme following the OS, and a manual override (Auto → Dark → Light).
-- 🌗 **Adaptive app icon**: automatically switches between its dark and light variants to match the OS appearance (macOS/Windows), including live theme changes.
-- 📊 **KPI Dashboard**: Total scans, Successes, Failures.
-- 📋 **Last scanned code** displayed in large text with 1-click copy.
+- 📡 **Smart serial listening** with chunk splitting, 50ms timeout, and 100ms idle timeout (no dependency on `\n` terminators). Several codes in one chunk are processed separately.
+- 🏷️ **Two-QR stock movements**: `IN|REF-001` receives stock, `OUT|REF-001` withdraws stock. The QR contains no quantity.
+- 🔢 **Quantity by scan**: the first scan sets quantity to 1; scanning the same code again increments it. The numeric keypad overrides the quantity, `Enter` validates, `Esc` cancels, and scanning another reference validates the pending movement.
+- ⏱️ **Auto-validation** after 5 seconds of inactivity, with a visible countdown.
+- ↩️ **10-second undo** for the last movement.
+- 💾 **Persistent outbox**: every movement is written to `outbox.json` before HTTP, then replayed sequentially with retries and a stable `event_id` for idempotency.
+- 📚 **Local reference catalog** loaded from `references.csv` (name, stock, low-stock alert) for instant display; Notion remains authoritative.
+- 📊 **KPI Dashboard**: movements, validated, pending, rejected.
 - 📜 **Activity Log** with color-coded severity levels (Info, Success, Warning, Error, Raw).
 - 🔄 **Real-time URL sync**: Edit the webhook URL without stopping the capture process.
 - 🧪 **Webhook test button** to validate network connection before scanning.
 - ⚡ **Built-in n8n assistant**: Detects if the URL is in test mode (`/webhook-test/`) and offers a 1-click switch to production (`/webhook/`).
+- 🔐 **Optional API key** sent as the `X-Scanner-Key` header.
 - 💾 **Persistence**: User configuration is automatically saved in `scanner_config.json`.
 - 🖥️ **Cross-platform**: macOS (native) and Windows (cross-compiled).
 
@@ -108,14 +111,83 @@ scanner_n8n.exe                    # Windows
 1. **Webhook URL**: Paste your n8n webhook URL (Use the **production** version: `https://your-n8n/webhook/...`).
 2. **Serial Port**: Select your scanner's port from the dropdown list.
 3. **Baud Rate**: Generally `9600` (default) or `57600`.
-4. **Device ID**: A custom identifier to recognize the scanner node in n8n.
-5. Click **"▶ Start Capture"**.
+4. **Station / Device ID**: A stable identifier for this workstation (for example `POSTE-01`).
+5. **API key** (optional): If your n8n workflow uses Header Auth, the app sends it as `X-Scanner-Key`.
+6. Check **"Start capture at launch"** if the station should be ready after a reboot.
+7. Click **"▶ Start Capture"**.
 
 Settings are saved automatically:
 - **macOS**: `~/Library/Application Support/scanner_n8n/scanner_config.json`
 - **Windows**: `%APPDATA%\scanner_n8n\scanner_config.json`
 - **Development**: `./scanner_config.json` when present
 - **Override**: set `SCANNER_N8N_CONFIG=/path/to/scanner_config.json`
+
+Optional tuning in `scanner_config.json` (restart the app after changing):
+- `auto_commit_secs`: idle delay before auto-validation (default `5`).
+- `debounce_ms`: double-read debounce for the same QR (default `300`).
+
+For production diagnostics, set `SCANNER_N8N_LOG_FILE=/path/to/scanner.log` before
+launching the app; the activity log is then also appended to that file.
+
+To make the station ready after a reboot, add the app to **macOS Login Items**
+(System Settings → General → Login Items) or to the **Windows Startup folder**
+(`shell:startup`), and enable **"Start capture at launch"** in the app.
+
+### 4. Stock mode
+
+The app expects **one QR code for the action and one for the reference**:
+
+| QR content | Meaning |
+|---|---|
+| `IN|DCO001` | Receive one or more pieces of `DCO001` into stock |
+| `OUT|DCO001` | Withdraw one or more pieces of `DCO001` from stock |
+
+The QR contains **no quantity**. Quantity is counted by the app:
+
+1. The first scan creates a pending movement with quantity **1**.
+2. Scanning the same QR again increments the quantity by one (300 ms debounce against double reads).
+3. The numeric keypad can replace the quantity: type `4`, then `Enter`.
+4. `Enter` validates immediately; `Esc` cancels.
+5. Scanning **another** reference validates the pending movement automatically.
+6. After **5 seconds** without input, the movement is validated automatically.
+
+A **10-second undo** button is available after validation. If the movement is still queued locally, it is removed without HTTP; if it was already sent, a compensating movement is enqueued with `motif: "Annulation"` and `cancels_event_id`.
+
+### 5. Local catalog
+
+`references.csv` gives the app the reference name, known stock, and low-stock flag. It is generated from the Notion CSV export:
+
+```bash
+python3 scripts/import-notion-csv.py "Suivi de stock - pièces.csv" -o references.csv
+```
+
+Place `references.csv` next to the configuration file (or in the current directory during development), or set `SCANNER_N8N_CATALOG=/path/to/references.csv`. The file is **not committed** because it contains stock levels.
+
+> The importer uses Notion's **`Stock réel`** column for the known stock and the presence of **`Alerts stock`** for the low-stock flag. If your Notion setup uses **`Stock en cours`** as the on-hand value, change the `stock` mapping in `scripts/import-notion-csv.py` (one line) and regenerate `references.csv`.
+
+The catalog is only a cache for display. Notion (through n8n) remains the source of truth; the app updates the cached stock from the `stock_after` field in the webhook response.
+
+### 6. Generate QR labels
+
+The label generator creates an A4 HTML sheet with two QR codes per reference
+(`IN|REF` and `OUT|REF`), 8 labels per page:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install segno
+.venv/bin/python scripts/generate-labels.py
+# → labels.html
+```
+
+Open `labels.html` in a browser and print at **100 % scale** (or save as PDF).
+To reprint only a few references:
+
+```bash
+.venv/bin/python scripts/generate-labels.py --only DCO001 DA001
+```
+
+The QR payload is only the action and the reference. The printed label does not
+contain a quantity or a stock level, so it stays valid when stock changes.
 
 ---
 
@@ -132,14 +204,77 @@ Settings are saved automatically:
 
 ### Payload received by n8n
 
+The app sends **one event per movement**, not one per piece. The legacy fields
+(`barcode`, `timestamp`, `device_id`) are kept for compatibility; new workflows
+should use the movement fields.
+
 ```json
 {
-  "barcode": "3760123456789",
-  "timestamp": "2026-10-19T14:30:00.000Z",
-  "device_id": "Netum-CS7501",
+  "event_id": "3f1c9e2a-7b4d-4e8f-9c1a-2d6b8e0f4a11",
+  "seq": 42,
+  "sku": "DCO001",
+  "action": "OUT",
+  "qty": 4,
+  "station_id": "POSTE-01",
+  "scanned_at": "2026-10-26T10:00:00+00:00",
+  "raw": "OUT|DCO001",
+  "app_version": "1.2.0",
+  "barcode": "OUT|DCO001",
+  "timestamp": "2026-10-26T10:00:00+00:00",
+  "device_id": "POSTE-01",
+  "motif": null,
+  "cancels_event_id": null,
   "is_test": null
 }
 ```
+
+The header `Idempotency-Key` contains the same value as `event_id`. The n8n
+workflow must store or check `event_id` before writing, so a retry after a
+timeout cannot create a duplicate movement. If an API key is configured, the
+header `X-Scanner-Key` is also sent.
+
+### Expected response
+
+Respond **after** the Notion write, not in "Respond Immediately" mode. The app
+sends one event at a time, so a slow workflow delays the queue but does not
+block scanning.
+
+```json
+{
+  "ok": true,
+  "stock_after": 38,
+  "message": "Sortie enregistrée"
+}
+```
+
+If the stock is insufficient, return HTTP **409** with:
+
+```json
+{
+  "ok": false,
+  "code": "INSUFFICIENT_STOCK",
+  "available": 2,
+  "message": "Stock insuffisant pour DCO001"
+}
+```
+
+The app then reopens the pending movement with the rejected quantity so the
+operator can adjust it without rescanning. Auto-validation and new scans are
+paused until the quantity is adjusted (or the movement is cancelled), to avoid
+replaying the same rejected movement. Any 2xx response without a JSON body is
+treated as success (backward compatibility with the previous workflow); the
+local cache is then adjusted by `qty`.
+
+### n8n implementation notes
+
+1. Add a **Webhook** node (`POST`).
+2. Validate `event_id` (idempotency) and `X-Scanner-Key`.
+3. Reject `is_test: true` before writing to Notion; the test payload is
+   `TEST-SCAN-123456`.
+4. Read/write the Notion **Références** database and append to **Mouvements**.
+5. Return the JSON response above.
+6. Keep the app-to-n8n contract stable: a future migration from Notion to
+   Postgres/Supabase should only change the n8n subworkflow, not the desktop app.
 
 ### ⚠️ Test vs Production URLs
 
@@ -219,7 +354,7 @@ TARGET=x86_64-pc-windows-msvc ./scripts/package-windows.sh
 
 ### Automated release
 
-Push a tag such as `v1.1.2`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
+Push a tag such as `v1.2.0`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
 
 ---
 

@@ -1,3 +1,11 @@
 /target
 /dist
 scanner_config.json
+references.csv
+outbox.json
+outbox.json.tmp
+outbox.json.corrupt
+labels.html
+labels.pdf
+.venv
+scanner_config.json.tmp
