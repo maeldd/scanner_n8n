@@ -170,20 +170,20 @@ Si n8n répond `409 INSUFFICIENT_STOCK` :
 C'est volontaire : cela évite de rejouer automatiquement le même mouvement
 refusé.
 
-### Étiquettes QR
+### Étiquettes QR (hors application)
 
-Le fichier `labels.html` contient les étiquettes à imprimer (une étiquette par
-référence, avec les deux QR `IN` et `OUT`). Il est généré à partir de
-`references.csv`.
+Les étiquettes sont produites **à l'extérieur de l'application**, par exemple
+avec le logiciel de l'imprimante 3D. Chaque référence/bin doit avoir deux QR :
 
-- imprimer en **A4, à 100 %** ;
-- désactiver les en-têtes et pieds de page du navigateur ;
-- ne pas ajouter de quantité sur l'étiquette : elle est saisie dans
-  l'application ;
-- vérifier le QR avec un téléphone après la première impression.
+- `IN|RÉFÉRENCE` pour une entrée ;
+- `OUT|RÉFÉRENCE` pour une sortie.
 
-Pour régénérer le catalogue et les étiquettes après un changement dans Notion,
-voir `scripts/import-notion-csv.py` et `scripts/generate-labels.py` (README).
+Le QR ne contient **ni quantité ni stock**. La référence doit être identique à
+celle de `references.csv` / Notion. Tester la première étiquette avec le
+scanner avant de lancer la production.
+
+Pour régénérer le catalogue après un changement dans Notion, voir
+`scripts/import-notion-csv.py` (README).
 
 ### Lire les indicateurs
 
@@ -633,7 +633,7 @@ Attendu :
 | Erreur 422 | Référence absente de Notion ou titre différent. Corriger le titre, puis rescanner. |
 | « REFUSÉS » augmente | Consulter le journal, corriger la cause, puis **Acquitter les refusés**. |
 | « EN ATTENTE » augmente | n8n est injoignable ou lent. Les mouvements sont dans `outbox.json` ; ne pas supprimer ce fichier. |
-| Le QR ne scanne pas | Imprimer à 100 %, vérifier le contraste, agrandir si besoin, tester avec un téléphone. |
+| Le QR ne scanne pas | Vérifier le QR généré par le logiciel de l'imprimante 3D : contenu `IN` / `OUT` + référence, taille, contraste, zone blanche autour. Tester avec un téléphone. |
 | Le stock affiché est faux au démarrage | Le stock local vient de `references.csv`. Réexporter le catalogue depuis Notion et relancer l'application. |
 
 ---

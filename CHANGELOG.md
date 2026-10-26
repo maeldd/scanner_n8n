@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Removed the bundled QR label generator. Labels are produced externally (for example with the 3D printer's label software); the app contract remains `IN|REF` / `OUT|REF` with no quantity in the QR.
+
+---
+
 ## [1.2.0] - 2026-10-26
 
 ### Added

@@ -169,27 +169,17 @@ Place `references.csv` next to the configuration file (or in the current directo
 
 The catalog is only a cache for display. Notion (through n8n) remains the source of truth; the app updates the cached stock from the `stock_after` field in the webhook response.
 
-### 6. Generate QR labels
+### 6. Labels
 
-The label generator creates an A4 HTML sheet with two QR codes per reference
-(`IN|REF` and `OUT|REF`), 8 labels per page:
+Labels are produced **outside the application**, for example with the label
+software of a 3D printer. The app only requires the QR payload described above:
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install segno
-.venv/bin/python scripts/generate-labels.py
-# → labels.html
-```
+- `IN|REF` for a stock receipt;
+- `OUT|REF` for a stock withdrawal.
 
-Open `labels.html` in a browser and print at **100 % scale** (or save as PDF).
-To reprint only a few references:
-
-```bash
-.venv/bin/python scripts/generate-labels.py --only DCO001 DA001
-```
-
-The QR payload is only the action and the reference. The printed label does not
-contain a quantity or a stock level, so it stays valid when stock changes.
+The QR contains **no quantity and no stock level**, so a label stays valid when
+stock changes. Use the exact reference from `references.csv` / Notion, and test
+the first printed label with the scanner.
 
 ---
 
