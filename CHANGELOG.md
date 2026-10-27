@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3] - 2026-10-27
+
+### Changed
+- The macOS release is now a **universal binary** (arm64 + x86_64), so it runs on both Apple Silicon and Intel Macs.
+- The Intel slice targets macOS 10.14 (Mojave) and the Apple Silicon slice targets macOS 11.0, instead of an Apple Silicon-only build.
+
+---
+
 ## [1.2.2] - 2026-10-26
 
 ### Changed

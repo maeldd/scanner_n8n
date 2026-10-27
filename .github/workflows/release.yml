@@ -17,12 +17,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: macos-package
+          key: macos-universal-package
 
-      - name: Build bundle and DMG
+      - name: Build universal bundle and DMG
         run: ./scripts/package-macos.sh
 
       - uses: actions/upload-artifact@v4
@@ -30,7 +32,7 @@ jobs:
           name: macos-package
           path: |
             dist/*.dmg
-            dist/Scanner-n8n-*-arm64
+            dist/Scanner-n8n-*-universal
           if-no-files-found: error
 
   windows:

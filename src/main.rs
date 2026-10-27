@@ -2841,7 +2841,7 @@ mod tests {
             station_id: "POSTE-01",
             scanned_at: "2026-10-26T10:00:00+00:00",
             raw: "OUT|DCO001",
-            app_version: "1.2.2",
+            app_version: "1.2.3",
             motif: Some("Annulation"),
             cancels_event_id: Some("previous-event"),
             is_test: None,

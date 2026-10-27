@@ -43,10 +43,13 @@ l'application réessaie automatiquement au redémarrage.
 ### macOS
 
 1. Télécharger le DMG macOS depuis la page Releases
-   (`Scanner-n8n-<version>-arm64.dmg`).
+   (`Scanner-n8n-<version>-universal.dmg`).
 2. Ouvrir le DMG et glisser l'application dans **Applications**.
 3. Au premier lancement, si macOS bloque l'application : clic droit sur
    l'application → **Ouvrir**.
+
+Le DMG macOS est **universel** : il fonctionne sur Apple Silicon (macOS 11 ou
+plus récent) et sur les Mac Intel (macOS 10.14 ou plus récent).
 
 ### Windows
 

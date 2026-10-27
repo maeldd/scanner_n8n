@@ -51,7 +51,7 @@ The application features a modern graphical interface with dark/light themes, a 
 - ⚡ **Built-in n8n assistant**: Detects if the URL is in test mode (`/webhook-test/`) and offers a 1-click switch to production (`/webhook/`).
 - 🔐 **Optional API key** sent as the `X-Scanner-Key` header.
 - 💾 **Persistence**: User configuration is automatically saved in `scanner_config.json`.
-- 🖥️ **Cross-platform**: macOS (native) and Windows (cross-compiled).
+- 🖥️ **Cross-platform**: macOS universal (Apple Silicon + Intel) and Windows (cross-compiled).
 
 ---
 
@@ -63,10 +63,13 @@ Download the appropriate binary for your OS from the [Releases](../../releases) 
 
 | OS | File | Architecture |
 |---|---|---|
-| **macOS** (Apple Silicon) | `Scanner-n8n-<version>-arm64.dmg` | aarch64 |
+| **macOS** (Apple Silicon + Intel) | `Scanner-n8n-<version>-universal.dmg` | universal (arm64 + x86_64) |
 | **Windows** | `Scanner-n8n-Setup-<version>-x64.exe` | x86_64 |
-| **macOS** (bare binary) | `scanner_n8n` | aarch64 |
+| **macOS** (bare binary) | `Scanner-n8n-<version>-universal` | universal |
 | **Windows** (bare binary) | `scanner_n8n.exe` | x86_64 |
+
+The macOS universal build runs on Apple Silicon (macOS 11 or newer) and Intel
+Macs (macOS 10.14 or newer).
 
 ### From Source
 
@@ -210,7 +213,7 @@ should use the movement fields.
   "station_id": "POSTE-01",
   "scanned_at": "2026-10-26T10:00:00+00:00",
   "raw": "OUT|DCO001",
-  "app_version": "1.2.2",
+  "app_version": "1.2.3",
   "barcode": "OUT|DCO001",
   "timestamp": "2026-10-26T10:00:00+00:00",
   "device_id": "POSTE-01",
@@ -281,12 +284,14 @@ does not keep a local stock cache.
 
 ## Compilation
 
-### macOS (native)
+### macOS (native development build)
 
 ```bash
 cargo build --release
-# → target/release/scanner_n8n
+# → target/release/scanner_n8n (only the current architecture)
 ```
+
+For a distributable universal build, use the packaging section below.
 
 ### Windows (cross-compilation from macOS)
 
@@ -307,15 +312,20 @@ RUSTC=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc \
 
 ## Packaging
 
-### macOS — `.app` + DMG
+### macOS — universal `.app` + DMG
 
 ```bash
+# One-time setup for the two architectures
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
 ./scripts/package-macos.sh
 # → dist/Scanner n8n.app
-# → dist/Scanner-n8n-<version>-<arch>.dmg
-# → dist/Scanner-n8n-<version>-<arch>      (bare binary)
+# → dist/Scanner-n8n-<version>-universal.dmg
+# → dist/Scanner-n8n-<version>-universal      (bare universal binary)
 ```
 
+- The DMG contains a universal binary: Apple Silicon (arm64, minimum macOS 11)
+  and Intel (x86_64, minimum macOS 10.14).
 - Ad-hoc signature by default. For a Developer ID signature:
   ```bash
   APPLE_SIGNING_IDENTITY="Developer ID Application: ..." ./scripts/package-macos.sh
@@ -346,7 +356,7 @@ TARGET=x86_64-pc-windows-msvc ./scripts/package-windows.sh
 
 ### Automated release
 
-Push a tag such as `v1.2.2`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
+Push a tag such as `v1.2.3`: the GitHub Actions workflow (`.github/workflows/release.yml`) builds the universal macOS DMG and the Windows installer on native runners and attaches them to the GitHub release.
 
 ---
 
