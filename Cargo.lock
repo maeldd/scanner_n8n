@@ -2811,6 +2811,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
+name = "qrcodegen"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
+
+[[package]]
 name = "quick-xml"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3078,7 +3084,7 @@ dependencies = [
 
 [[package]]
 name = "scanner_n8n"
-version = "1.2.3"
+version = "1.2.4"
 dependencies = [
  "chrono",
  "csv",
@@ -3086,6 +3092,7 @@ dependencies = [
  "objc2 0.5.3",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
+ "qrcodegen",
  "reqwest",
  "serde",
  "serde_json",

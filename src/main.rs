@@ -9,13 +9,14 @@ use chrono::{DateTime, Local, Utc};
 use eframe::egui::{self, Align, Color32, Layout, Margin, RichText, Rounding, Stroke, Vec2};
 use model::{Action, MovementState, PendingMovement, ScanResult, parse_scan};
 use outbox::{EventStatus, Outbox, QueuedEvent};
+use qrcodegen::{QrCode as QrCodeGen, QrCodeEcc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -25,6 +26,12 @@ const OUTBOX_FILE: &str = "outbox.json";
 const CATALOG_FILE: &str = "references.csv";
 const LOG_LIMIT: usize = 5_000;
 const BAUD_RATES: [u32; 5] = [9600, 19200, 38400, 57600, 115200];
+
+/// Contenu du QR code d'annulation imprimé et affiché dans l'application.
+/// Il est reconnu avant l'analyse `IN|...` / `OUT|...` : le scanner peut donc
+/// annuler la saisie en cours sans toucher au clavier.
+const CANCEL_QR_CODE: &str = "ANNULER";
+const CANCEL_LABEL_FILE: &str = "etiquette-annulation.html";
 
 /// Dossier de configuration propre à l'utilisateur (utilisé quand l'app est
 /// lancée depuis un bundle macOS ou un raccourci Windows, sans dossier courant
@@ -102,6 +109,257 @@ fn default_station_id() -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "POSTE-01".to_string())
+}
+
+/// Vrai si le code scanné est le QR d'annulation (et non un mouvement).
+fn is_cancel_command(code: &str) -> bool {
+    code.trim().eq_ignore_ascii_case(CANCEL_QR_CODE)
+}
+
+/// Matrice du QR d'annulation, calculée une seule fois au premier affichage.
+struct QrMatrix {
+    size: usize,
+    modules: Vec<bool>,
+}
+
+fn cancel_qr() -> &'static QrMatrix {
+    static MATRIX: OnceLock<QrMatrix> = OnceLock::new();
+    MATRIX.get_or_init(|| {
+        let code = QrCodeGen::encode_text(CANCEL_QR_CODE, QrCodeEcc::Medium)
+            .expect("le QR d'annulation doit toujours être encodable");
+        let size = code.size() as usize;
+        let mut modules = Vec::with_capacity(size * size);
+        for y in 0..size {
+            for x in 0..size {
+                modules.push(code.get_module(x as i32, y as i32));
+            }
+        }
+        QrMatrix { size, modules }
+    })
+}
+
+/// Dessine le QR d'annulation dans l'interface, avec une marge blanche de
+/// 4 modules pour rester lisible par le scanner.
+fn draw_cancel_qr(ui: &mut egui::Ui, size: f32) -> egui::Response {
+    const QUIET: usize = 4;
+
+    let matrix = cancel_qr();
+    let total = (matrix.size + QUIET * 2) as f32;
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, Rounding::same(4.0), Color32::WHITE);
+
+    let module = size / total;
+    for y in 0..matrix.size {
+        for x in 0..matrix.size {
+            if !matrix.modules[y * matrix.size + x] {
+                continue;
+            }
+            let min =
+                rect.min + egui::vec2((x + QUIET) as f32 * module, (y + QUIET) as f32 * module);
+            painter.rect_filled(
+                egui::Rect::from_min_size(min, Vec2::splat(module + 0.25)),
+                0.0,
+                Color32::BLACK,
+            );
+        }
+    }
+
+    response
+}
+
+/// Version SVG du QR, utilisée dans la page HTML imprimable.
+fn qr_svg(matrix: &QrMatrix) -> String {
+    use std::fmt::Write as _;
+
+    const QUIET: usize = 4;
+    let total = matrix.size + QUIET * 2;
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {total} {total}\" \
+         width=\"100%\" height=\"100%\" shape-rendering=\"crispEdges\" role=\"img\" \
+         aria-label=\"QR code annuler la saisie\">\
+         <rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>"
+    );
+
+    for y in 0..matrix.size {
+        for x in 0..matrix.size {
+            if matrix.modules[y * matrix.size + x] {
+                let _ = write!(
+                    svg,
+                    "<rect x=\"{}\" y=\"{}\" width=\"1\" height=\"1\" fill=\"#000000\"/>",
+                    x + QUIET,
+                    y + QUIET
+                );
+            }
+        }
+    }
+
+    svg.push_str("</svg>");
+    svg
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| match character {
+            '&' => "&amp;".to_string(),
+            '<' => "&lt;".to_string(),
+            '>' => "&gt;".to_string(),
+            '"' => "&quot;".to_string(),
+            '\'' => "&#39;".to_string(),
+            _ => character.to_string(),
+        })
+        .collect()
+}
+
+/// Étiquette 50 × 30 mm prête à imprimer sur une imprimante thermique.
+/// Une seule étiquette par page, sans marge, pour ne pas décaler le format.
+/// Le navigateur ouvre directement la boîte d'impression (`window.print()` au
+/// chargement).
+fn build_cancel_label_html(station: &str) -> String {
+    let station = html_escape(station.trim());
+    let station = if station.is_empty() {
+        "POSTE-01".to_string()
+    } else {
+        station
+    };
+    let qr = qr_svg(cancel_qr());
+
+    let css = r#"
+  @page { size: 50mm 30mm; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: #000;
+    background: #e2e8f0;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6mm;
+    padding: 6mm;
+    font-size: 4mm;
+    color: #334155;
+  }
+  .toolbar button {
+    font: inherit;
+    font-weight: 600;
+    padding: 3mm 8mm;
+    border: 0;
+    border-radius: 2mm;
+    background: #4f46e5;
+    color: #fff;
+    cursor: pointer;
+  }
+  .sheet {
+    display: flex;
+    justify-content: center;
+    padding: 6mm;
+  }
+  .label {
+    display: flex;
+    align-items: center;
+    gap: 1.5mm;
+    width: 50mm;
+    height: 30mm;
+    padding: 1.2mm 1.4mm;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+  }
+  .qr { flex: 0 0 22mm; width: 22mm; height: 22mm; }
+  .copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .title {
+    font-size: 3.9mm;
+    line-height: 0.95;
+    font-weight: 800;
+    letter-spacing: 0.05mm;
+  }
+  .hint { margin: 0.8mm 0 0; font-size: 2.35mm; line-height: 1.12; }
+  .line {
+    margin-top: 1.2mm;
+    padding-top: 0.4mm;
+    border-top: 0.25mm solid #000;
+    font-size: 2.3mm;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+  .station {
+    margin: 0.7mm 0 0;
+    font-size: 1.65mm;
+    line-height: 1;
+    color: #444;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media print {
+    body { background: #fff; width: 50mm; height: 30mm; }
+    .toolbar { display: none; }
+    .sheet { display: block; padding: 0; }
+    .label { margin: 0; }
+  }
+"#;
+
+    format!(
+        r#"<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Étiquette · Annuler la saisie</title>
+<style>{css}</style>
+</head>
+<body onload="window.print()">
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">Imprimer</button>
+    <span>Étiquette 50 × 30 mm pour imprimante thermique · 1 étiquette par page.</span>
+  </div>
+  <div class="sheet">
+    <section class="label">
+      <div class="qr">{qr}</div>
+      <div class="copy">
+        <div class="title">ANNULER<br>LA SAISIE</div>
+        <div class="hint">Scanner pour annuler la saisie en cours.</div>
+        <div class="line">Ligne : ______________</div>
+        <div class="station">Poste : {station}</div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>"#
+    )
+}
+
+/// Ouvre un fichier avec l'application par défaut du système (navigateur pour
+/// la page d'impression).
+fn open_path(path: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(path).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+    }
 }
 
 // Icônes embarquées (variantes sombre et claire)
@@ -995,6 +1253,12 @@ impl ScannerApp {
         // dans ce champ.
         self.focus_reset = true;
 
+        // Le QR d'annulation est une commande, pas un mouvement de stock.
+        if is_cancel_command(&code) {
+            self.cancel_pending_input("QR code");
+            return;
+        }
+
         match parse_scan(&code) {
             Ok((action, sku, normalized)) => {
                 let now = Instant::now();
@@ -1062,6 +1326,67 @@ impl ScannerApp {
                     &format!("{error} Code reçu : {code}"),
                 );
                 self.trigger_flash(Color32::from_rgb(239, 68, 68), "CODE NON RECONNU");
+            }
+        }
+    }
+
+    fn cancel_pending_input(&mut self, source: &str) {
+        match self.movement.cancel() {
+            Some(pending) => {
+                let name = self
+                    .catalog
+                    .lookup(&pending.sku)
+                    .map(|reference| reference.name.clone())
+                    .unwrap_or_default();
+                self.add_log(
+                    LogLevel::Info,
+                    "ANNULÉ",
+                    &format!(
+                        "Saisie annulée ({source}) : {} {} ×{}.",
+                        pending.action.label_fr(),
+                        display_name(&pending.sku, &name),
+                        pending.qty
+                    ),
+                );
+                self.trigger_flash(Color32::from_rgb(100, 116, 139), "SAISIE ANNULÉE");
+            }
+            None => {
+                self.add_log(
+                    LogLevel::Info,
+                    "ANNULÉ",
+                    &format!("Aucune saisie en cours à annuler ({source})."),
+                );
+                self.trigger_flash(Color32::from_rgb(100, 116, 139), "AUCUNE SAISIE");
+            }
+        }
+    }
+
+    fn print_cancel_label(&mut self) {
+        let path = data_path(CANCEL_LABEL_FILE);
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let html = build_cancel_label_html(&self.config.device_id);
+        match fs::write(&path, html) {
+            Ok(()) => {
+                self.add_log(
+                    LogLevel::Info,
+                    "ÉTIQUETTE",
+                    &format!(
+                        "Étiquette d'annulation générée (50 × 30 mm, imprimante thermique) : {}",
+                        path.display()
+                    ),
+                );
+                open_path(&path);
+            }
+            Err(error) => {
+                self.add_log(
+                    LogLevel::Error,
+                    "ÉTIQUETTE",
+                    &format!("Impossible d'écrire {} : {error}", path.display()),
+                );
+                self.trigger_flash(Color32::from_rgb(239, 68, 68), "IMPRESSION IMPOSSIBLE");
             }
         }
     }
@@ -1394,9 +1719,7 @@ impl ScannerApp {
                         }
                     }
                     egui::Key::Escape => {
-                        if self.movement.cancel().is_some() {
-                            self.add_log(LogLevel::Info, "ANNULÉ", "Mouvement en attente annulé.");
-                        }
+                        self.cancel_pending_input("Échap");
                     }
                     egui::Key::Backspace => self.movement.backspace(now),
                     _ => {}
@@ -1851,6 +2174,7 @@ impl eframe::App for ScannerApp {
         let mut minus = false;
         let mut plus = false;
         let mut undo = false;
+        let mut print_label = false;
         let mut copied = false;
 
         // On force le fond du panneau central à la couleur exacte du thème choisi
@@ -2122,10 +2446,23 @@ impl eframe::App for ScannerApp {
                                     validate = true;
                                 }
                                 if ui
-                                    .button(
-                                        RichText::new("✕ Annuler (Échap)")
-                                            .size(12.0)
-                                            .color(theme.text_muted),
+                                    .add_sized(
+                                        [190.0, 32.0],
+                                        egui::Button::new(
+                                            RichText::new("✕ Annuler la saisie (Échap)")
+                                                .strong()
+                                                .size(12.0)
+                                                .color(Color32::from_rgb(248, 113, 113)),
+                                        )
+                                        .fill(if theme.is_dark {
+                                            Color32::from_rgb(48, 18, 22)
+                                        } else {
+                                            Color32::from_rgb(254, 242, 242)
+                                        }),
+                                    )
+                                    .on_hover_text(
+                                        "Supprime la saisie affichée sans l'envoyer à n8n. \
+                                         Vous pouvez aussi scanner le QR d'annulation ci-dessous.",
                                     )
                                     .clicked()
                                 {
@@ -2231,6 +2568,46 @@ impl eframe::App for ScannerApp {
                                 .color(theme.text_muted),
                             );
                         }
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+
+                        ui.horizontal(|ui| {
+                            draw_cancel_qr(ui, 104.0);
+                            ui.add_space(6.0);
+                            ui.vertical(|ui| {
+                                ui.label(
+                                    RichText::new("QR d'annulation")
+                                        .strong()
+                                        .size(12.0)
+                                        .color(theme.text_primary),
+                                );
+                                ui.label(
+                                    RichText::new(
+                                        "Scanné par l'opérateur, ce code annule la saisie affichée \
+                                         exactement comme le bouton : rien n'est envoyé à n8n.",
+                                    )
+                                    .size(10.5)
+                                    .color(theme.text_muted),
+                                );
+                                ui.add_space(4.0);
+                                if ui
+                                    .button(
+                                        RichText::new("🖨 Imprimer l'étiquette (50 × 30 mm)")
+                                            .size(11.5)
+                                            .color(theme.accent),
+                                    )
+                                    .on_hover_text(
+                                        "Génère une étiquette 50 × 30 mm pour imprimante thermique, \
+                                         puis ouvre la boîte d'impression.",
+                                    )
+                                    .clicked()
+                                {
+                                    print_label = true;
+                                }
+                            });
+                        });
                     });
 
                 ui.add_space(10.0);
@@ -2736,11 +3113,14 @@ impl eframe::App for ScannerApp {
                 self.commit_pending(pending);
             }
         }
-        if cancel && self.movement.cancel().is_some() {
-            self.add_log(LogLevel::Info, "ANNULÉ", "Mouvement en attente annulé.");
+        if cancel {
+            self.cancel_pending_input("bouton");
         }
         if undo {
             self.undo_last();
+        }
+        if print_label {
+            self.print_cancel_label();
         }
         if copied {
             self.copied_time = Some(Instant::now());
@@ -2825,6 +3205,24 @@ mod tests {
         let codes = drain_delimited(&mut buffer);
         assert_eq!(codes, vec!["IN|DCO001"]);
         assert_eq!(buffer, b"OUT|DA0");
+    }
+
+    #[test]
+    fn cancel_qr_is_recognized_before_movement_parsing() {
+        assert!(is_cancel_command("ANNULER"));
+        assert!(is_cancel_command("  annuler\r\n"));
+        assert!(!is_cancel_command("IN|ANNULER"));
+        assert!(!is_cancel_command("OUT|DCO001"));
+    }
+
+    #[test]
+    fn printable_label_is_50_by_30_and_escapes_station() {
+        let html = build_cancel_label_html("POSTE <01>");
+        assert_eq!(html.matches("<section class=\"label\">").count(), 1);
+        assert_eq!(html.matches("<svg ").count(), 1);
+        assert!(html.contains("@page { size: 50mm 30mm; margin: 0; }"));
+        assert!(html.contains("Poste : POSTE &lt;01&gt;"));
+        assert!(html.contains("window.print()"));
     }
 
     #[test]

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.4] - 2026-10-29
+
+### Added
+- **Cancel the current entry from the scan station**: a prominent **✕ Annuler la saisie** button, the existing `Esc` shortcut, and a **printable `ANNULER` QR code** all cancel the pending movement without sending anything to n8n.
+- The app can print a **50 × 30 mm thermal label** (large QR, line name field, station) to stick on stock lines. The print page opens the browser print dialog automatically.
+- `qrcodegen` is now used to render the cancellation QR code in the app and in the printable label.
+
+---
+
 ## [1.2.3] - 2026-10-27
 
 ### Changed

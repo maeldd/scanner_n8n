@@ -159,6 +159,36 @@ La carte du mouvement affiche le nom et la description. Aucun stock local n'est
 calculé : le stock et les alertes restent dans Notion. Si n8n renvoie
 `stock_after`, la carte du dernier mouvement l'affiche comme « Stock Notion ».
 
+### Annuler la saisie en cours (sans envoi)
+
+Tant que le mouvement est affiché dans la carte, avant sa validation, il existe
+trois moyens équivalents de l'annuler :
+
+- le bouton rouge **✕ Annuler la saisie** ;
+- la touche **Échap** ;
+- le **QR d'annulation** imprimé (contenu `ANNULER`) : l'opérateur le scanne
+  avec le même pistolet, sans toucher au clavier.
+
+L'annulation supprime **uniquement la saisie affichée**. Rien n'est envoyé à
+n8n et le stock Notion n'est pas modifié. Si le mouvement a déjà été validé
+automatiquement, utiliser la fenêtre **↩ Annuler** de 10 secondes décrite
+ci-dessous.
+
+Pour fabriquer les étiquettes :
+
+1. cliquer sur **🖨 Imprimer l'étiquette (50 × 30 mm)** sous le QR d'annulation ;
+2. le navigateur ouvre une page au format **50 × 30 mm** (une étiquette par
+   page) et lance directement l'impression ;
+3. sélectionner l'imprimante thermique et le format 50 × 30 mm dans la boîte
+   d'impression ;
+4. coller l'étiquette sur la ligne de stock, à un endroit accessible au
+   scanner, et écrire le nom de la ligne sur la ligne prévue.
+
+Le QR affiché dans l'application et celui de l'étiquette ont exactement la même
+action. Le code imprimé peut être testé avant la mise en production en le
+scannant alors qu'aucune saisie n'est en cours : l'application affiche
+« AUCUNE SAISIE ».
+
 ### Annuler le dernier mouvement
 
 Pendant **10 secondes**, le bouton **↩ Annuler** reste disponible :
@@ -179,10 +209,11 @@ Si n8n répond `409 INSUFFICIENT_STOCK` :
 C'est volontaire : cela évite de rejouer automatiquement le même mouvement
 refusé.
 
-### Étiquettes QR (hors application)
+### Étiquettes QR des références (hors application)
 
-Les étiquettes sont produites **à l'extérieur de l'application**, par exemple
-avec le logiciel de l'imprimante 3D. Chaque référence/bin doit avoir deux QR :
+Les étiquettes des références sont produites **à l'extérieur de l'application**,
+par exemple avec le logiciel de l'imprimante 3D. Chaque référence/bin doit avoir
+deux QR :
 
 - `IN|RÉFÉRENCE` pour une entrée ;
 - `OUT|RÉFÉRENCE` pour une sortie.
@@ -190,6 +221,10 @@ avec le logiciel de l'imprimante 3D. Chaque référence/bin doit avoir deux QR :
 Le QR ne contient **ni quantité ni stock**. La référence doit être identique à
 celle de `references.csv` / Notion. Tester la première étiquette avec le
 scanner avant de lancer la production.
+
+L'étiquette d'annulation (`ANNULER`), elle, est générée directement par
+l'application : voir **Annuler la saisie en cours** ci-dessus. Elle est
+générique et peut être collée sur n'importe quelle ligne de stock.
 
 Pour régénérer le catalogue après un changement dans Notion, voir
 `scripts/import-notion-csv.py` (README).
@@ -643,6 +678,7 @@ Attendu :
 | « REFUSÉS » augmente | Consulter le journal, corriger la cause, puis **Acquitter les refusés**. |
 | « EN ATTENTE » augmente | n8n est injoignable ou lent. Les mouvements sont dans `outbox.json` ; ne pas supprimer ce fichier. |
 | Le QR ne scanne pas | Vérifier le QR généré par le logiciel de l'imprimante 3D : contenu `IN` / `OUT` + référence, taille, contraste, zone blanche autour. Tester avec un téléphone. |
+| Le QR d'annulation ne scanne pas | Le régénérer avec **🖨 Imprimer l'étiquette (50 × 30 mm)**. Le contenu doit être exactement `ANNULER`, avec une zone blanche autour du QR. |
 | Le stock ne s'affiche pas dans l'application | Normal : le stock et les alertes sont gérés uniquement dans Notion. L'application n'affiche que le nom, la description et éventuellement le `stock_after` renvoyé par n8n. |
 
 ---

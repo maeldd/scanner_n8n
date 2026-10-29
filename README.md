@@ -41,6 +41,7 @@ The application features a modern graphical interface with dark/light themes, a 
 - 🏷️ **Two-QR stock movements**: `IN|REF-001` receives stock, `OUT|REF-001` withdraws stock. The QR contains no quantity.
 - 🔢 **Quantity by scan**: the first scan sets quantity to 1; scanning the same code again increments it. The numeric keypad overrides the quantity, `Enter` validates, `Esc` cancels, and scanning another reference validates the pending movement.
 - ⏱️ **Auto-validation** after 5 seconds of inactivity, with a visible countdown.
+- ✋ **Cancel the current entry** without sending anything to n8n: on-screen button, `Esc`, or a printable `ANNULER` QR code (50 × 30 mm thermal label) that can be stuck on stock lines.
 - ↩️ **10-second undo** for the last movement.
 - 💾 **Persistent outbox**: every movement is written to `outbox.json` before HTTP, then replayed sequentially with retries and a stable `event_id` for idempotency.
 - 📚 **Local reference catalog** loaded from `references.csv` (names and descriptions only) for instant display; stock and alerts remain exclusively in Notion.
@@ -213,7 +214,7 @@ should use the movement fields.
   "station_id": "POSTE-01",
   "scanned_at": "2026-10-26T10:00:00+00:00",
   "raw": "OUT|DCO001",
-  "app_version": "1.2.3",
+  "app_version": "1.2.4",
   "barcode": "OUT|DCO001",
   "timestamp": "2026-10-26T10:00:00+00:00",
   "device_id": "POSTE-01",
