@@ -41,13 +41,14 @@ The application features a modern graphical interface with dark/light themes, a 
 - 🏷️ **Two-QR stock movements**: `IN|REF-001` receives stock, `OUT|REF-001` withdraws stock. The QR contains no quantity.
 - 🔢 **Quantity by scan**: the first scan sets quantity to 1; scanning the same code again increments it. The numeric keypad overrides the quantity, `Enter` validates, `Esc` cancels, and scanning another reference validates the pending movement.
 - ⏱️ **Auto-validation** after 5 seconds of inactivity, with a visible countdown.
-- ✋ **Cancel the current entry** without sending anything to n8n: on-screen button, `Esc`, or a printable `ANNULER` QR code (50 × 30 mm thermal label) that can be stuck on stock lines.
+- ✋ **Cancel the current entry** without sending anything to n8n: on-screen button, `Esc`, or a printed `ANNULER` QR code. The app writes it as a standalone `qr-annulation.svg` file (22 mm) next to its configuration, ready to import into thermal label software for 50 × 30 mm labels.
 - ↩️ **10-second undo** for the last movement.
 - 💾 **Persistent outbox**: every movement is written to `outbox.json` before HTTP, then replayed sequentially with retries and a stable `event_id` for idempotency.
 - 📚 **Local reference catalog** loaded from `references.csv` (names and descriptions only) for instant display; stock and alerts remain exclusively in Notion.
 - 📊 **KPI Dashboard**: movements, validated, pending, rejected.
 - 📜 **Activity Log** with color-coded severity levels (Info, Success, Warning, Error, Raw).
 - 🔄 **Real-time URL sync**: Edit the webhook URL without stopping the capture process.
+- 🎛️ **Focused operator view**: webhook settings live in **⚙ Paramètres** and serial/Bluetooth settings in **🔌 Connexion**, so the main screen only shows scanning.
 - 🧪 **Webhook test button** to validate network connection before scanning.
 - ⚡ **Built-in n8n assistant**: Detects if the URL is in test mode (`/webhook-test/`) and offers a 1-click switch to production (`/webhook/`).
 - 🔐 **Optional API key** sent as the `X-Scanner-Key` header.
@@ -114,13 +115,19 @@ scanner_n8n.exe                    # Windows
 
 ### 3. Configuration
 
-1. **Webhook URL**: Paste your n8n webhook URL (Use the **production** version: `https://your-n8n/webhook/...`).
-2. **Serial Port**: Select your scanner's port from the dropdown list.
-3. **Baud Rate**: Generally `9600` (default) or `57600`.
-4. **Station / Device ID**: A stable identifier for this workstation (for example `POSTE-01`).
-5. **API key** (optional): If your n8n workflow uses Header Auth, the app sends it as `X-Scanner-Key`.
+The webhook and hardware settings live in two dialogs opened from the header, so
+the operator view stays focused on scanning:
+
+- **⚙ Paramètres**: webhook URL, station / device ID, API key, webhook test;
+- **🔌 Connexion**: serial port, baud rate, start-capture-at-launch.
+
+1. In **⚙ Paramètres**, paste your n8n webhook URL (use the **production** version: `https://your-n8n/webhook/...`).
+2. Set the **Station / Device ID**: a stable identifier for this workstation (for example `POSTE-01`).
+3. **API key** (optional): if your n8n workflow uses Header Auth, the app sends it as `X-Scanner-Key`.
+4. In **🔌 Connexion**, select your scanner's **serial port** from the dropdown list.
+5. **Baud Rate**: generally `9600` (default) or `57600`.
 6. Check **"Start capture at launch"** if the station should be ready after a reboot.
-7. Click **"▶ Start Capture"**.
+7. Click **"▶ Start Capture"**. The header badge switches to **● ACTIF**.
 
 Settings are saved automatically:
 - **macOS**: `~/Library/Application Support/scanner_n8n/scanner_config.json`
@@ -185,6 +192,14 @@ The QR contains **no quantity and no stock level**, so a label stays valid when
 stock changes. Use the exact reference from `references.csv` / Notion, and test
 the first printed label with the scanner.
 
+The **cancel** label is the only one the app helps with: at startup it writes
+`qr-annulation.svg` (22 mm, payload `ANNULER`) next to `scanner_config.json`.
+Import that SVG into the thermal label software on a **50 × 30 mm** layout; the
+app never opens a print dialog.
+
+- **macOS**: `~/Library/Application Support/scanner_n8n/qr-annulation.svg`
+- **Windows**: `%APPDATA%\scanner_n8n\qr-annulation.svg`
+
 ---
 
 ## n8n Configuration
@@ -214,7 +229,7 @@ should use the movement fields.
   "station_id": "POSTE-01",
   "scanned_at": "2026-10-26T10:00:00+00:00",
   "raw": "OUT|DCO001",
-  "app_version": "1.2.4",
+  "app_version": "1.2.5",
   "barcode": "OUT|DCO001",
   "timestamp": "2026-10-26T10:00:00+00:00",
   "device_id": "POSTE-01",

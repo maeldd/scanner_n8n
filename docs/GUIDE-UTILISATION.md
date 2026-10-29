@@ -11,7 +11,8 @@ Ce guide est fait pour deux personnes :
 ## Démarrage rapide
 
 1. Installer l'application et jumeler le scanner en **SPP**.
-2. Dans l'application : URL de production n8n, clé API, port série, `POSTE-01`.
+2. Dans l'application : menu **⚙ Paramètres** (URL n8n de production, clé API,
+   poste) puis menu **🔌 Connexion** (port série, `9600` bauds).
 3. Copier `references.csv` dans le dossier de données de l'application.
 4. Créer les bases Notion `Références` et `Mouvements` (section 5).
 5. Construire et activer le workflow n8n (section 6).
@@ -67,11 +68,14 @@ Le scanner doit être en mode **SPP (Serial Port Profile)**, pas en mode HID
 1. Mettre le scanner en mode SPP (voir la notice ou le QR code de configuration
    du fabricant).
 2. Le jumeler dans les réglages Bluetooth de l'ordinateur.
-3. Dans l'application, choisir le port série :
+3. Dans l'application, ouvrir le menu **🔌 Connexion** puis choisir le port
+   série :
    - macOS : `/dev/cu.NomDuScanner` ;
    - Windows : `COM3`, `COM4`, etc.
 4. Laisser **9600 bauds** sauf indication contraire du scanner.
 5. Cocher **« Démarrer la capture au lancement »**.
+6. Cliquer sur **▶ Démarrer la capture**. Le badge du bandeau supérieur passe
+   à **● ACTIF**.
 
 > Si le scanner est en mode HID, il « tape » le code dans le champ qui a le
 > focus et l'application ne le voit pas. Il faut le remettre en SPP.
@@ -85,16 +89,24 @@ Les réglages sont sauvegardés automatiquement dans :
 - macOS : `~/Library/Application Support/scanner_n8n/scanner_config.json`
 - Windows : `%APPDATA%\scanner_n8n\scanner_config.json`
 
-| Réglage | Valeur |
-|---|---|
-| **URL du Webhook** | L'URL **de production** n8n, par exemple `https://TON-N8N/webhook/scanner-stock` |
-| **Clé API** | Le même secret que le Header Auth n8n `X-Scanner-Key` (recommandé) |
-| **Port série** | Le port du scanner SPP |
-| **Vitesse** | `9600` bauds (en général) |
-| **Poste / Device ID** | Le nom du poste, par exemple `POSTE-01` |
-| **Démarrer la capture au lancement** | Coché |
+Ils sont répartis dans deux menus, accessibles depuis le bandeau supérieur :
 
-Cliquer sur **Tester le Webhook** :
+- **⚙ Paramètres** : webhook n8n, poste et clé API ;
+- **🔌 Connexion** : port série, vitesse et démarrage de la capture.
+
+Le clic sur le badge d'état **● ACTIF** / **○ INACTIF** ouvre aussi le menu
+**Connexion**.
+
+| Réglage | Menu | Valeur |
+|---|---|---|
+| **URL du Webhook** | ⚙ Paramètres | L'URL **de production** n8n, par exemple `https://TON-N8N/webhook/scanner-stock` |
+| **Clé API** | ⚙ Paramètres | Le même secret que le Header Auth n8n `X-Scanner-Key` (recommandé) |
+| **Poste / Device ID** | ⚙ Paramètres | Le nom du poste, par exemple `POSTE-01` |
+| **Port série** | 🔌 Connexion | Le port du scanner SPP |
+| **Vitesse** | 🔌 Connexion | `9600` bauds (en général) |
+| **Démarrer la capture au lancement** | 🔌 Connexion | Coché |
+
+Cliquer sur **⚡ Tester le Webhook** dans le menu **⚙ Paramètres** :
 
 - si le test est OK, le journal affiche un message de succès ;
 - le payload de test contient `is_test: true` et **ne doit rien écrire dans
@@ -136,8 +148,8 @@ fonctionnent toujours ; l'application affiche simplement la référence brute.
 
 ### Scanner un mouvement
 
-1. Vérifier que la capture est active (indicateur vert / bouton
-   **Arrêter la capture** visible).
+1. Vérifier que la capture est active (badge **● ACTIF** dans le bandeau
+   supérieur).
 2. Scanner l'étiquette :
    - `IN|DCO001` = entrée de stock ;
    - `OUT|DCO001` = sortie de stock.
@@ -174,17 +186,27 @@ n8n et le stock Notion n'est pas modifié. Si le mouvement a déjà été valid�
 automatiquement, utiliser la fenêtre **↩ Annuler** de 10 secondes décrite
 ci-dessous.
 
+L'application n'imprime rien elle-même : elle génère un **fichier QR
+autonome** à côté de sa configuration.
+
+- macOS : `~/Library/Application Support/scanner_n8n/qr-annulation.svg`
+- Windows : `%APPDATA%\scanner_n8n\qr-annulation.svg`
+
+Le fichier est créé (ou mis à jour) à chaque démarrage de l'application. Le QR
+mesure **22 mm de côté**, zone blanche comprise, et contient exactement
+`ANNULER`.
+
 Pour fabriquer les étiquettes :
 
-1. cliquer sur **🖨 Imprimer l'étiquette (50 × 30 mm)** sous le QR d'annulation ;
-2. le navigateur ouvre une page au format **50 × 30 mm** (une étiquette par
-   page) et lance directement l'impression ;
-3. sélectionner l'imprimante thermique et le format 50 × 30 mm dans la boîte
-   d'impression ;
+1. ouvrir `qr-annulation.svg` dans le logiciel de l'imprimante thermique ;
+2. créer une étiquette **50 × 30 mm** : placer le QR à gauche (22 mm) et un
+   texte à droite, par exemple « ANNULER LA SAISIE », « Ligne : ______ » et le
+   nom du poste ;
+3. imprimer sur l'imprimante thermique ;
 4. coller l'étiquette sur la ligne de stock, à un endroit accessible au
    scanner, et écrire le nom de la ligne sur la ligne prévue.
 
-Le QR affiché dans l'application et celui de l'étiquette ont exactement la même
+Le QR affiché dans l'application et celui du fichier SVG ont exactement la même
 action. Le code imprimé peut être testé avant la mise en production en le
 scannant alors qu'aucune saisie n'est en cours : l'application affiche
 « AUCUNE SAISIE ».
@@ -223,8 +245,9 @@ celle de `references.csv` / Notion. Tester la première étiquette avec le
 scanner avant de lancer la production.
 
 L'étiquette d'annulation (`ANNULER`), elle, est générée directement par
-l'application : voir **Annuler la saisie en cours** ci-dessus. Elle est
-générique et peut être collée sur n'importe quelle ligne de stock.
+l'application sous forme de fichier `qr-annulation.svg` : voir **Annuler la
+saisie en cours** ci-dessus. Elle est générique et peut être collée sur
+n'importe quelle ligne de stock.
 
 Pour régénérer le catalogue après un changement dans Notion, voir
 `scripts/import-notion-csv.py` (README).
@@ -678,7 +701,7 @@ Attendu :
 | « REFUSÉS » augmente | Consulter le journal, corriger la cause, puis **Acquitter les refusés**. |
 | « EN ATTENTE » augmente | n8n est injoignable ou lent. Les mouvements sont dans `outbox.json` ; ne pas supprimer ce fichier. |
 | Le QR ne scanne pas | Vérifier le QR généré par le logiciel de l'imprimante 3D : contenu `IN` / `OUT` + référence, taille, contraste, zone blanche autour. Tester avec un téléphone. |
-| Le QR d'annulation ne scanne pas | Le régénérer avec **🖨 Imprimer l'étiquette (50 × 30 mm)**. Le contenu doit être exactement `ANNULER`, avec une zone blanche autour du QR. |
+| Le QR d'annulation ne scanne pas | Vérifier le fichier `qr-annulation.svg` à côté de `scanner_config.json` : il doit contenir exactement `ANNULER`, avec une zone blanche autour. À l'impression, conserver la zone blanche et ne pas réduire le QR sous 22 mm. |
 | Le stock ne s'affiche pas dans l'application | Normal : le stock et les alertes sont gérés uniquement dans Notion. L'application n'affiche que le nom, la description et éventuellement le `stock_after` renvoyé par n8n. |
 
 ---
@@ -697,6 +720,7 @@ Contenu :
 | `scanner_config.json` | URL, port série, poste, clé API |
 | `references.csv` | Catalogue local des noms et descriptions (sans stock) |
 | `outbox.json` | Mouvements en attente / envoyés / refusés |
+| `qr-annulation.svg` | QR `ANNULER` autonome (22 mm), régénéré au démarrage |
 
 Sauvegarder ce dossier régulièrement. Ne pas éditer `outbox.json` à la main.
 
@@ -731,7 +755,8 @@ Sauvegarder ce dossier régulièrement. Ne pas éditer `outbox.json` à la main.
 **Administrateur**
 
 1. Installer l'application et jumeler le scanner en SPP.
-2. Configurer l'URL de production, la clé API, le port et le poste.
+2. Configurer l'URL de production, la clé API et le poste dans **⚙ Paramètres**,
+   puis le port série dans **🔌 Connexion**.
 3. Copier `references.csv` dans le dossier de données.
 4. Créer les bases Notion `Références` et `Mouvements`.
 5. Importer le workflow n8n décrit ci-dessus et l'activer.

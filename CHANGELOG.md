@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.5] - 2026-10-29
+
+### Changed
+- The **n8n webhook** settings (URL, station, API key, test button) moved into a **⚙ Paramètres** dialog.
+- The **serial / Bluetooth** settings (port, baud rate, start capture at launch) moved into a **🔌 Connexion** dialog, also reachable by clicking the status badge.
+- The main operator view no longer shows the webhook and hardware configuration cards, leaving room for scanning.
+- The status badge now reads **● ACTIF** / **○ INACTIF** and opens the connection dialog.
+
+### Added
+- The app now writes a standalone **`qr-annulation.svg`** file (22 mm, payload `ANNULER`) next to `scanner_config.json` at startup, ready to import into thermal label software for 50 × 30 mm labels.
+
+### Removed
+- The in-app **🖨 Imprimer l'étiquette** button and the generated HTML print page. The app no longer opens a print dialog.
+
+---
+
 ## [1.2.4] - 2026-10-29
 
 ### Added

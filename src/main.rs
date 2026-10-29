@@ -13,7 +13,7 @@ use qrcodegen::{QrCode as QrCodeGen, QrCodeEcc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -31,7 +31,7 @@ const BAUD_RATES: [u32; 5] = [9600, 19200, 38400, 57600, 115200];
 /// Il est reconnu avant l'analyse `IN|...` / `OUT|...` : le scanner peut donc
 /// annuler la saisie en cours sans toucher au clavier.
 const CANCEL_QR_CODE: &str = "ANNULER";
-const CANCEL_LABEL_FILE: &str = "etiquette-annulation.html";
+const CANCEL_QR_FILE: &str = "qr-annulation.svg";
 
 /// Dossier de configuration propre à l'utilisateur (utilisé quand l'app est
 /// lancée depuis un bundle macOS ou un raccourci Windows, sans dossier courant
@@ -168,16 +168,21 @@ fn draw_cancel_qr(ui: &mut egui::Ui, size: f32) -> egui::Response {
     response
 }
 
-/// Version SVG du QR, utilisée dans la page HTML imprimable.
-fn qr_svg(matrix: &QrMatrix) -> String {
+/// Fichier SVG autonome du QR d'annulation, à importer dans le logiciel de
+/// l'imprimante thermique. Le QR fait 22 mm de côté (zone blanche comprise),
+/// ce qui laisse de la place pour le texte sur une étiquette 50 × 30 mm.
+fn cancel_qr_svg() -> String {
     use std::fmt::Write as _;
 
     const QUIET: usize = 4;
+    const SIZE_MM: f32 = 22.0;
+    let matrix = cancel_qr();
     let total = matrix.size + QUIET * 2;
     let mut svg = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {total} {total}\" \
-         width=\"100%\" height=\"100%\" shape-rendering=\"crispEdges\" role=\"img\" \
-         aria-label=\"QR code annuler la saisie\">\
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{SIZE_MM}mm\" \
+         height=\"{SIZE_MM}mm\" viewBox=\"0 0 {total} {total}\" \
+         preserveAspectRatio=\"xMidYMid meet\" shape-rendering=\"crispEdges\" \
+         role=\"img\" aria-label=\"QR code annuler la saisie\">\
          <rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>"
     );
 
@@ -198,168 +203,24 @@ fn qr_svg(matrix: &QrMatrix) -> String {
     svg
 }
 
-fn html_escape(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| match character {
-            '&' => "&amp;".to_string(),
-            '<' => "&lt;".to_string(),
-            '>' => "&gt;".to_string(),
-            '"' => "&quot;".to_string(),
-            '\'' => "&#39;".to_string(),
-            _ => character.to_string(),
-        })
-        .collect()
-}
-
-/// Étiquette 50 × 30 mm prête à imprimer sur une imprimante thermique.
-/// Une seule étiquette par page, sans marge, pour ne pas décaler le format.
-/// Le navigateur ouvre directement la boîte d'impression (`window.print()` au
-/// chargement).
-fn build_cancel_label_html(station: &str) -> String {
-    let station = html_escape(station.trim());
-    let station = if station.is_empty() {
-        "POSTE-01".to_string()
-    } else {
-        station
-    };
-    let qr = qr_svg(cancel_qr());
-
-    let css = r#"
-  @page { size: 50mm 30mm; margin: 0; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-    color: #000;
-    background: #e2e8f0;
-  }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 6mm;
-    padding: 6mm;
-    font-size: 4mm;
-    color: #334155;
-  }
-  .toolbar button {
-    font: inherit;
-    font-weight: 600;
-    padding: 3mm 8mm;
-    border: 0;
-    border-radius: 2mm;
-    background: #4f46e5;
-    color: #fff;
-    cursor: pointer;
-  }
-  .sheet {
-    display: flex;
-    justify-content: center;
-    padding: 6mm;
-  }
-  .label {
-    display: flex;
-    align-items: center;
-    gap: 1.5mm;
-    width: 50mm;
-    height: 30mm;
-    padding: 1.2mm 1.4mm;
-    overflow: hidden;
-    background: #fff;
-    color: #000;
-  }
-  .qr { flex: 0 0 22mm; width: 22mm; height: 22mm; }
-  .copy {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-  .title {
-    font-size: 3.9mm;
-    line-height: 0.95;
-    font-weight: 800;
-    letter-spacing: 0.05mm;
-  }
-  .hint { margin: 0.8mm 0 0; font-size: 2.35mm; line-height: 1.12; }
-  .line {
-    margin-top: 1.2mm;
-    padding-top: 0.4mm;
-    border-top: 0.25mm solid #000;
-    font-size: 2.3mm;
-    line-height: 1.05;
-    white-space: nowrap;
-  }
-  .station {
-    margin: 0.7mm 0 0;
-    font-size: 1.65mm;
-    line-height: 1;
-    color: #444;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  @media print {
-    body { background: #fff; width: 50mm; height: 30mm; }
-    .toolbar { display: none; }
-    .sheet { display: block; padding: 0; }
-    .label { margin: 0; }
-  }
-"#;
-
-    format!(
-        r#"<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Étiquette · Annuler la saisie</title>
-<style>{css}</style>
-</head>
-<body onload="window.print()">
-  <div class="toolbar">
-    <button type="button" onclick="window.print()">Imprimer</button>
-    <span>Étiquette 50 × 30 mm pour imprimante thermique · 1 étiquette par page.</span>
-  </div>
-  <div class="sheet">
-    <section class="label">
-      <div class="qr">{qr}</div>
-      <div class="copy">
-        <div class="title">ANNULER<br>LA SAISIE</div>
-        <div class="hint">Scanner pour annuler la saisie en cours.</div>
-        <div class="line">Ligne : ______________</div>
-        <div class="station">Poste : {station}</div>
-      </div>
-    </section>
-  </div>
-</body>
-</html>"#
-    )
-}
-
-/// Ouvre un fichier avec l'application par défaut du système (navigateur pour
-/// la page d'impression).
-fn open_path(path: &Path) {
-    #[cfg(target_os = "macos")]
+/// Écrit (ou met à jour) le fichier QR à côté de la configuration.
+fn write_cancel_qr_file() -> Result<PathBuf, String> {
+    let path = data_path(CANCEL_QR_FILE);
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
     {
-        let _ = std::process::Command::new("open").arg(path).spawn();
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Impossible de créer {} : {error}", parent.display()))?;
     }
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
 
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let _ = std::process::Command::new("cmd")
-            .args(["/C", "start", ""])
-            .arg(path)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
+    let svg = cancel_qr_svg();
+    if fs::read_to_string(&path).ok().as_deref() != Some(svg.as_str()) {
+        fs::write(&path, svg)
+            .map_err(|error| format!("Impossible d'écrire {} : {error}", path.display()))?;
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
-    }
+
+    Ok(path)
 }
 
 // Icônes embarquées (variantes sombre et claire)
@@ -769,6 +630,8 @@ struct ScannerApp {
     boot_started: bool,
     focus_reset: bool,
     icon_dark: Option<bool>,
+    show_settings: bool,
+    show_connection: bool,
 }
 
 impl ScannerApp {
@@ -860,6 +723,8 @@ impl ScannerApp {
             boot_started: false,
             focus_reset: false,
             icon_dark: Some(system_dark),
+            show_settings: false,
+            show_connection: false,
         };
 
         app.add_log(
@@ -867,6 +732,14 @@ impl ScannerApp {
             "SYSTÈME",
             "Application initialisée. Scannez une étiquette IN|... ou OUT|....",
         );
+        match write_cancel_qr_file() {
+            Ok(path) => app.add_log(
+                LogLevel::Info,
+                "QR",
+                &format!("QR d'annulation généré : {}", path.display()),
+            ),
+            Err(error) => app.add_log(LogLevel::Warning, "QR", &error),
+        }
         app.add_log(catalog_level, "CATALOGUE", &catalog_message);
         if let Some(error) = config_error {
             app.add_log(LogLevel::Warning, "CONFIG", &error);
@@ -1106,6 +979,286 @@ impl ScannerApp {
                 }
             }
         });
+    }
+
+    fn show_settings_window(&mut self, ctx: &egui::Context, theme: ThemeColors) {
+        if !self.show_settings {
+            return;
+        }
+
+        let mut open = self.show_settings;
+        egui::Window::new("⚙ Paramètres n8n")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(430.0)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(
+                    RichText::new("Webhook n8n")
+                        .strong()
+                        .size(13.0)
+                        .color(theme.text_primary),
+                );
+                ui.label(
+                    RichText::new("Ces réglages sont enregistrés automatiquement.")
+                        .size(10.5)
+                        .color(theme.text_muted),
+                );
+                ui.add_space(8.0);
+
+                ui.label(
+                    RichText::new("URL du Webhook :")
+                        .size(11.0)
+                        .color(theme.text_muted),
+                );
+                let available_width = ui.available_width();
+                let url_edit = ui.add(
+                    egui::TextEdit::singleline(&mut self.config.webhook_url)
+                        .hint_text("https://n8n.mondomaine.com/webhook/...")
+                        .desired_width(available_width),
+                );
+                if url_edit.changed() || url_edit.lost_focus() {
+                    self.config.save();
+                    if let Ok(mut shared) = self.webhook_url_shared.write() {
+                        *shared = self.config.webhook_url.clone();
+                    }
+                }
+
+                if self.config.webhook_url.contains("/webhook-test/") {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new("⚠️ Mode Test")
+                                .size(10.5)
+                                .color(Color32::from_rgb(251, 191, 36)),
+                        );
+                        if ui
+                            .button(
+                                RichText::new("Passer en Production")
+                                    .size(10.5)
+                                    .color(Color32::from_rgb(52, 211, 153)),
+                            )
+                            .on_hover_text(
+                                "Remplace /webhook-test/ par /webhook/ pour le workflow publié",
+                            )
+                            .clicked()
+                        {
+                            self.config.webhook_url = self
+                                .config
+                                .webhook_url
+                                .replace("/webhook-test/", "/webhook/");
+                            self.config.save();
+                            if let Ok(mut shared) = self.webhook_url_shared.write() {
+                                *shared = self.config.webhook_url.clone();
+                            }
+                        }
+                    });
+                } else if self.config.webhook_url.contains("/webhook/") {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new("✓ Mode Production")
+                                .size(10.5)
+                                .color(Color32::from_rgb(52, 211, 153)),
+                        );
+                        if ui
+                            .button(
+                                RichText::new("Passer en Test")
+                                    .size(10.5)
+                                    .color(Color32::from_rgb(148, 163, 184)),
+                            )
+                            .clicked()
+                        {
+                            self.config.webhook_url = self
+                                .config
+                                .webhook_url
+                                .replace("/webhook/", "/webhook-test/");
+                            self.config.save();
+                            if let Ok(mut shared) = self.webhook_url_shared.write() {
+                                *shared = self.config.webhook_url.clone();
+                            }
+                        }
+                    });
+                }
+
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("Poste / Device ID :")
+                        .size(11.0)
+                        .color(theme.text_muted),
+                );
+                let device_edit = ui.add(
+                    egui::TextEdit::singleline(&mut self.config.device_id)
+                        .hint_text("POSTE-01")
+                        .desired_width(available_width),
+                );
+                if device_edit.changed() || device_edit.lost_focus() {
+                    self.config.save();
+                }
+
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("Clé API (header X-Scanner-Key) :")
+                        .size(11.0)
+                        .color(theme.text_muted),
+                );
+                let key_edit = ui.add(
+                    egui::TextEdit::singleline(&mut self.config.api_key)
+                        .hint_text("optionnel")
+                        .password(true)
+                        .desired_width(available_width),
+                );
+                if key_edit.changed() || key_edit.lost_focus() {
+                    self.config.save();
+                    if let Ok(mut shared) = self.api_key_shared.write() {
+                        *shared = self.config.api_key.clone();
+                    }
+                }
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                if ui
+                    .button(
+                        RichText::new("⚡ Tester le Webhook")
+                            .size(12.0)
+                            .color(theme.accent),
+                    )
+                    .clicked()
+                {
+                    self.test_webhook();
+                }
+            });
+        self.show_settings = open;
+    }
+
+    fn show_connection_window(&mut self, ctx: &egui::Context, theme: ThemeColors) {
+        if !self.show_connection {
+            return;
+        }
+
+        let mut open = self.show_connection;
+        egui::Window::new("🔌 Connexion Série / Bluetooth")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(430.0)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                let (status_text, status_color) = if self.is_listening {
+                    ("● ÉCOUTE ACTIVE", Color32::from_rgb(16, 185, 129))
+                } else {
+                    ("○ INACTIF", theme.text_muted)
+                };
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("État :").size(11.0).color(theme.text_muted));
+                    ui.label(
+                        RichText::new(status_text)
+                            .size(11.5)
+                            .strong()
+                            .color(status_color),
+                    );
+                });
+                ui.label(
+                    RichText::new("Le scanner doit être configuré en mode SPP (port série).")
+                        .size(10.5)
+                        .color(theme.text_muted),
+                );
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Port :").size(11.0).color(theme.text_muted));
+                    let current_port = if self.config.selected_port.is_empty() {
+                        "Aucun port".to_string()
+                    } else {
+                        self.config.selected_port.clone()
+                    };
+
+                    egui::ComboBox::from_id_salt("port_select")
+                        .selected_text(&current_port)
+                        .width(200.0)
+                        .show_ui(ui, |ui| {
+                            for port in &self.available_ports {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.config.selected_port,
+                                        port.clone(),
+                                        port,
+                                    )
+                                    .clicked()
+                                {
+                                    self.config.save();
+                                }
+                            }
+                        });
+
+                    if ui
+                        .button("🔄")
+                        .on_hover_text("Actualiser les ports")
+                        .clicked()
+                    {
+                        self.refresh_ports();
+                    }
+                });
+
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Vitesse :")
+                            .size(11.0)
+                            .color(theme.text_muted),
+                    );
+                    egui::ComboBox::from_id_salt("baud_select")
+                        .selected_text(format!("{} bauds", self.config.baud_rate))
+                        .width(200.0)
+                        .show_ui(ui, |ui| {
+                            for &rate in &BAUD_RATES {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.config.baud_rate,
+                                        rate,
+                                        format!("{rate} bauds"),
+                                    )
+                                    .clicked()
+                                {
+                                    self.config.save();
+                                }
+                            }
+                        });
+                });
+
+                ui.add_space(8.0);
+                if ui
+                    .checkbox(
+                        &mut self.config.auto_start,
+                        RichText::new("Démarrer la capture au lancement")
+                            .size(11.0)
+                            .color(theme.text_muted),
+                    )
+                    .changed()
+                {
+                    self.config.save();
+                }
+
+                ui.add_space(12.0);
+                let (btn_fill, btn_text) = if self.is_listening {
+                    (Color32::from_rgb(225, 29, 72), "⏹  Arrêter la capture")
+                } else {
+                    (Color32::from_rgb(79, 70, 229), "▶  Démarrer la capture")
+                };
+                let button = egui::Button::new(
+                    RichText::new(btn_text)
+                        .strong()
+                        .size(13.0)
+                        .color(Color32::WHITE),
+                )
+                .fill(btn_fill);
+                let button_width = ui.available_width();
+                if ui.add_sized([button_width, 34.0], button).clicked() {
+                    self.toggle_listening();
+                }
+            });
+        self.show_connection = open;
     }
 
     fn toggle_listening(&mut self) {
@@ -1357,36 +1510,6 @@ impl ScannerApp {
                     &format!("Aucune saisie en cours à annuler ({source})."),
                 );
                 self.trigger_flash(Color32::from_rgb(100, 116, 139), "AUCUNE SAISIE");
-            }
-        }
-    }
-
-    fn print_cancel_label(&mut self) {
-        let path = data_path(CANCEL_LABEL_FILE);
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-
-        let html = build_cancel_label_html(&self.config.device_id);
-        match fs::write(&path, html) {
-            Ok(()) => {
-                self.add_log(
-                    LogLevel::Info,
-                    "ÉTIQUETTE",
-                    &format!(
-                        "Étiquette d'annulation générée (50 × 30 mm, imprimante thermique) : {}",
-                        path.display()
-                    ),
-                );
-                open_path(&path);
-            }
-            Err(error) => {
-                self.add_log(
-                    LogLevel::Error,
-                    "ÉTIQUETTE",
-                    &format!("Impossible d'écrire {} : {error}", path.display()),
-                );
-                self.trigger_flash(Color32::from_rgb(239, 68, 68), "IMPRESSION IMPOSSIBLE");
             }
         }
     }
@@ -2174,7 +2297,6 @@ impl eframe::App for ScannerApp {
         let mut minus = false;
         let mut plus = false;
         let mut undo = false;
-        let mut print_label = false;
         let mut copied = false;
 
         // On force le fond du panneau central à la couleur exacte du thème choisi
@@ -2196,7 +2318,7 @@ impl eframe::App for ScannerApp {
                                 .size(20.0),
                         );
                         ui.label(
-                            RichText::new("Entrées / sorties de stock — file locale et webhook n8n")
+                            RichText::new("Entrées / sorties de stock")
                                 .color(theme.text_muted)
                                 .size(12.0),
                         );
@@ -2207,7 +2329,7 @@ impl eframe::App for ScannerApp {
                             (
                                 Color32::from_rgb(16, 48, 36),
                                 Color32::from_rgb(16, 185, 129),
-                                "● ÉCOUTE ACTIVE",
+                                "● ACTIF",
                                 Color32::from_rgb(52, 211, 153),
                             )
                         } else if theme.is_dark {
@@ -2226,24 +2348,22 @@ impl eframe::App for ScannerApp {
                             )
                         };
 
-                        egui::Frame::default()
-                            .fill(badge_bg)
-                            .stroke(Stroke::new(1.0_f32, badge_stroke))
-                            .rounding(Rounding::same(12.0))
-                            .inner_margin(Margin {
-                                left: 12.0,
-                                right: 12.0,
-                                top: 5.0,
-                                bottom: 5.0,
-                            })
-                            .show(ui, |ui| {
-                                ui.label(
-                                    RichText::new(badge_text)
-                                        .color(badge_color)
-                                        .strong()
-                                        .size(12.0),
-                                );
-                            });
+                        let badge = egui::Button::new(
+                            RichText::new(badge_text)
+                                .color(badge_color)
+                                .strong()
+                                .size(12.0),
+                        )
+                        .fill(badge_bg)
+                        .stroke(Stroke::new(1.0_f32, badge_stroke))
+                        .rounding(Rounding::same(12.0));
+                        if ui
+                            .add(badge)
+                            .on_hover_text("Ouvrir la connexion série")
+                            .clicked()
+                        {
+                            self.show_connection = true;
+                        }
 
                         let (theme_icon, theme_label) = self.config.theme_mode.icon_and_label();
                         if ui
@@ -2258,6 +2378,30 @@ impl eframe::App for ScannerApp {
                             self.config.theme_mode = self.config.theme_mode.next();
                             self.config.save();
                             Self::apply_theme(ctx, self.config.theme_mode);
+                        }
+
+                        if ui
+                            .button(
+                                RichText::new("⚙ Paramètres")
+                                    .size(12.0)
+                                    .color(theme.text_primary),
+                            )
+                            .on_hover_text("Webhook n8n, poste et clé API")
+                            .clicked()
+                        {
+                            self.show_settings = true;
+                        }
+
+                        if ui
+                            .button(
+                                RichText::new("🔌 Connexion")
+                                    .size(12.0)
+                                    .color(theme.text_primary),
+                            )
+                            .on_hover_text("Port série, vitesse et démarrage de la capture")
+                            .clicked()
+                        {
+                            self.show_connection = true;
                         }
                     });
                 });
@@ -2592,303 +2736,19 @@ impl eframe::App for ScannerApp {
                                     .color(theme.text_muted),
                                 );
                                 ui.add_space(4.0);
-                                if ui
-                                    .button(
-                                        RichText::new("🖨 Imprimer l'étiquette (50 × 30 mm)")
-                                            .size(11.5)
-                                            .color(theme.accent),
-                                    )
-                                    .on_hover_text(
-                                        "Génère une étiquette 50 × 30 mm pour imprimante thermique, \
-                                         puis ouvre la boîte d'impression.",
-                                    )
-                                    .clicked()
-                                {
-                                    print_label = true;
-                                }
+                                ui.label(
+                                    RichText::new(format!("📄 {CANCEL_QR_FILE} · QR 22 mm"))
+                                        .monospace()
+                                        .size(10.0)
+                                        .color(theme.text_muted),
+                                )
+                                .on_hover_text(format!(
+                                    "Fichier SVG autonome généré à côté de la configuration : {}",
+                                    data_path(CANCEL_QR_FILE).display()
+                                ));
                             });
                         });
                     });
-
-                ui.add_space(10.0);
-
-                // ----------------------------------------------------
-                // 4. Configuration n8n & Matériel (Deux cartes côte à côte)
-                // ----------------------------------------------------
-                ui.columns(2, |cols| {
-                    // CARTE GAUCHE : Configuration n8n
-                    egui::Frame::default()
-                        .fill(theme.bg_card)
-                        .stroke(Stroke::new(1.0_f32, theme.border_card))
-                        .rounding(Rounding::same(10.0))
-                        .inner_margin(Margin::same(12.0))
-                        .show(&mut cols[0], |ui| {
-                            ui.label(
-                                RichText::new("🌐 Webhook n8n")
-                                    .strong()
-                                    .size(13.0)
-                                    .color(theme.text_primary),
-                            );
-                            ui.add_space(6.0);
-
-                            ui.label(
-                                RichText::new("URL du Webhook :")
-                                    .size(11.0)
-                                    .color(theme.text_muted),
-                            );
-                            let available_width = ui.available_width();
-                            let url_edit = ui.add(
-                                egui::TextEdit::singleline(&mut self.config.webhook_url)
-                                    .hint_text("https://n8n.mondomaine.com/webhook/...")
-                                    .desired_width(available_width),
-                            );
-                            if url_edit.changed() || url_edit.lost_focus() {
-                                self.config.save();
-                                if let Ok(mut shared) = self.webhook_url_shared.write() {
-                                    *shared = self.config.webhook_url.clone();
-                                }
-                            }
-
-                            if self.config.webhook_url.contains("/webhook-test/") {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        RichText::new("⚠️ Mode Test")
-                                            .size(10.5)
-                                            .color(Color32::from_rgb(251, 191, 36)),
-                                    );
-                                    if ui
-                                        .button(
-                                            RichText::new("Passer en Production")
-                                                .size(10.5)
-                                                .color(Color32::from_rgb(52, 211, 153)),
-                                        )
-                                        .on_hover_text(
-                                            "Remplace /webhook-test/ par /webhook/ pour le workflow publié",
-                                        )
-                                        .clicked()
-                                    {
-                                        self.config.webhook_url = self
-                                            .config
-                                            .webhook_url
-                                            .replace("/webhook-test/", "/webhook/");
-                                        self.config.save();
-                                        if let Ok(mut shared) = self.webhook_url_shared.write() {
-                                            *shared = self.config.webhook_url.clone();
-                                        }
-                                    }
-                                });
-                            } else if self.config.webhook_url.contains("/webhook/") {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        RichText::new("✓ Mode Production")
-                                            .size(10.5)
-                                            .color(Color32::from_rgb(52, 211, 153)),
-                                    );
-                                    if ui
-                                        .button(
-                                            RichText::new("Passer en Test")
-                                                .size(10.5)
-                                                .color(Color32::from_rgb(148, 163, 184)),
-                                        )
-                                        .clicked()
-                                    {
-                                        self.config.webhook_url = self
-                                            .config
-                                            .webhook_url
-                                            .replace("/webhook/", "/webhook-test/");
-                                        self.config.save();
-                                        if let Ok(mut shared) = self.webhook_url_shared.write() {
-                                            *shared = self.config.webhook_url.clone();
-                                        }
-                                    }
-                                });
-                            }
-
-                            ui.add_space(4.0);
-
-                            ui.label(
-                                RichText::new("Poste / Device ID :")
-                                    .size(11.0)
-                                    .color(theme.text_muted),
-                            );
-                            let device_edit = ui.add(
-                                egui::TextEdit::singleline(&mut self.config.device_id)
-                                    .hint_text("POSTE-01")
-                                    .desired_width(available_width),
-                            );
-                            if device_edit.changed() || device_edit.lost_focus() {
-                                self.config.save();
-                            }
-
-                            ui.add_space(4.0);
-
-                            ui.label(
-                                RichText::new("Clé API (header X-Scanner-Key) :")
-                                    .size(11.0)
-                                    .color(theme.text_muted),
-                            );
-                            let key_edit = ui.add(
-                                egui::TextEdit::singleline(&mut self.config.api_key)
-                                    .hint_text("optionnel")
-                                    .password(true)
-                                    .desired_width(available_width),
-                            );
-                            if key_edit.changed() || key_edit.lost_focus() {
-                                self.config.save();
-                                if let Ok(mut shared) = self.api_key_shared.write() {
-                                    *shared = self.config.api_key.clone();
-                                }
-                            }
-
-                            ui.add_space(8.0);
-
-                            if ui
-                                .button(
-                                    RichText::new("⚡ Tester le Webhook")
-                                        .size(12.0)
-                                        .color(theme.accent),
-                                )
-                                .clicked()
-                            {
-                                self.test_webhook();
-                            }
-                        });
-
-                    // CARTE DROITE : Port Série / Bluetooth
-                    egui::Frame::default()
-                        .fill(theme.bg_card)
-                        .stroke(Stroke::new(1.0_f32, theme.border_card))
-                        .rounding(Rounding::same(10.0))
-                        .inner_margin(Margin::same(12.0))
-                        .show(&mut cols[1], |ui| {
-                            ui.label(
-                                RichText::new("🔌 Connexion Série / Bluetooth")
-                                    .strong()
-                                    .size(13.0)
-                                    .color(theme.text_primary),
-                            );
-                            ui.add_space(6.0);
-
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new("Port :")
-                                        .size(11.0)
-                                        .color(theme.text_muted),
-                                );
-                                let current_port = if self.config.selected_port.is_empty() {
-                                    "Aucun port".to_string()
-                                } else {
-                                    self.config.selected_port.clone()
-                                };
-
-                                egui::ComboBox::from_id_salt("port_select")
-                                    .selected_text(&current_port)
-                                    .width(120.0)
-                                    .show_ui(ui, |ui| {
-                                        for port in &self.available_ports {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut self.config.selected_port,
-                                                    port.clone(),
-                                                    port,
-                                                )
-                                                .clicked()
-                                            {
-                                                self.config.save();
-                                            }
-                                        }
-                                    });
-
-                                if ui
-                                    .button("🔄")
-                                    .on_hover_text("Actualiser les ports")
-                                    .clicked()
-                                {
-                                    self.refresh_ports();
-                                }
-                            });
-
-                            ui.add_space(4.0);
-
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new("Vitesse :")
-                                        .size(11.0)
-                                        .color(theme.text_muted),
-                                );
-                                egui::ComboBox::from_id_salt("baud_select")
-                                    .selected_text(format!("{} bauds", self.config.baud_rate))
-                                    .width(120.0)
-                                    .show_ui(ui, |ui| {
-                                        for &rate in &BAUD_RATES {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut self.config.baud_rate,
-                                                    rate,
-                                                    format!("{rate} bauds"),
-                                                )
-                                                .clicked()
-                                            {
-                                                self.config.save();
-                                            }
-                                        }
-                                    });
-                            });
-
-                            ui.add_space(4.0);
-
-                            if ui
-                                .checkbox(
-                                    &mut self.config.auto_start,
-                                    RichText::new("Démarrer la capture au lancement")
-                                        .size(11.0)
-                                        .color(theme.text_muted),
-                                )
-                                .changed()
-                            {
-                                self.config.save();
-                            }
-
-                            ui.add_space(8.0);
-
-                            let (btn_fill, btn_text, text_color) = if self.is_listening {
-                                (
-                                    Color32::from_rgb(225, 29, 72),
-                                    "⏹  Arrêter la capture",
-                                    Color32::from_rgb(255, 255, 255),
-                                )
-                            } else {
-                                (
-                                    Color32::from_rgb(79, 70, 229),
-                                    "▶  Démarrer la capture",
-                                    Color32::from_rgb(255, 255, 255),
-                                )
-                            };
-
-                            let button = egui::Button::new(
-                                RichText::new(btn_text)
-                                    .strong()
-                                    .size(13.0)
-                                    .color(text_color),
-                            )
-                            .fill(btn_fill);
-
-                            let button_width = ui.available_width();
-                            if ui.add_sized([button_width, 32.0], button).clicked() {
-                                self.toggle_listening();
-                            }
-
-                            ui.add_space(6.0);
-                            ui.label(
-                                RichText::new(format!(
-                                    "Catalogue : {} référence(s)",
-                                    self.catalog.len()
-                                ))
-                                .size(10.0)
-                                .color(theme.text_muted),
-                            );
-                        });
-                });
 
                 ui.add_space(10.0);
 
@@ -3089,6 +2949,10 @@ impl eframe::App for ScannerApp {
                     });
             });
 
+        // Menus flottants : paramètres n8n et connexion série.
+        self.show_settings_window(ctx, theme);
+        self.show_connection_window(ctx, theme);
+
         // Appliquer les actions de la carte après le rendu, pour éviter les
         // conflits d'emprunt avec l'interface.
         let now = Instant::now();
@@ -3118,9 +2982,6 @@ impl eframe::App for ScannerApp {
         }
         if undo {
             self.undo_last();
-        }
-        if print_label {
-            self.print_cancel_label();
         }
         if copied {
             self.copied_time = Some(Instant::now());
@@ -3216,13 +3077,13 @@ mod tests {
     }
 
     #[test]
-    fn printable_label_is_50_by_30_and_escapes_station() {
-        let html = build_cancel_label_html("POSTE <01>");
-        assert_eq!(html.matches("<section class=\"label\">").count(), 1);
-        assert_eq!(html.matches("<svg ").count(), 1);
-        assert!(html.contains("@page { size: 50mm 30mm; margin: 0; }"));
-        assert!(html.contains("Poste : POSTE &lt;01&gt;"));
-        assert!(html.contains("window.print()"));
+    fn standalone_qr_svg_is_22mm() {
+        let svg = cancel_qr_svg();
+        assert_eq!(svg.matches("<svg ").count(), 1);
+        assert!(svg.contains("width=\"22mm\""));
+        assert!(svg.contains("height=\"22mm\""));
+        assert!(svg.contains("fill=\"#ffffff\""));
+        assert!(svg.contains("fill=\"#000000\""));
     }
 
     #[test]

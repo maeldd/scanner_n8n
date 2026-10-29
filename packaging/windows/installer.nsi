@@ -9,7 +9,7 @@ SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 
 !ifndef VERSION
-    !define VERSION "1.2.4"
+    !define VERSION "1.2.5"
 !endif
 
 !ifndef EXE_PATH
